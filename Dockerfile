@@ -1,10 +1,11 @@
-FROM node:20-bullseye
+FROM node:20-alpine
 
-# Install python3 and pip for yt-dlp extractor
-RUN apt-get update && apt-get install -y python3 python3-pip ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install Python3, pip, ffmpeg, and ca-certificates
+RUN apk add --no-cache python3 py3-pip ffmpeg ca-certificates curl && \
+    ln -sf python3 /usr/bin/python
 
-# Install yt-dlp
-RUN pip3 install --no-cache-dir yt-dlp
+# Install yt-dlp python package for the live extractor
+RUN pip3 install --no-cache-dir --break-system-packages yt-dlp
 
 WORKDIR /app
 
