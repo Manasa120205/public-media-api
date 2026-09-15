@@ -357,4 +357,44 @@ describe('PublicMedia API Test Suite', () => {
       expect(res.body.error.code).toBe('UNSUPPORTED_DOMAIN');
     });
   });
+
+  // ==========================================================================
+  // 13. Interactive Browser Demo Serving
+  // ==========================================================================
+  describe('13. Interactive Browser Demo Console', () => {
+    it('GET /demo/ should serve static HTML console', async () => {
+      const res = await request(app).get('/demo/');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/html');
+      expect(res.text).toContain('PublicMedia API Console');
+    });
+  });
+
+  // ==========================================================================
+  // 14. Multi-Key & Subscription Plans
+  // ==========================================================================
+  describe('14. Multi-Key & Subscription Plans', () => {
+    const planService = require('../src/services/plan.service');
+
+    it('should correctly resolve plan limits for Free, Basic, Pro, and Premium', () => {
+      expect(planService.getPlanLimit('free')).toBe(50);
+      expect(planService.getPlanLimit('basic')).toBe(1000);
+      expect(planService.getPlanLimit('pro')).toBe(5000);
+      expect(planService.getPlanLimit('premium')).toBe(25000);
+    });
+
+    it('should dynamically generate and register new user API keys', () => {
+      const newKey = planService.createApiKey('client_tenant_1', 'basic');
+
+      expect(newKey.key.startsWith('pk_')).toBe(true);
+      expect(newKey.plan).toBe('basic');
+      expect(newKey.userId).toBe('client_tenant_1');
+
+      const info = planService.getKeyInfo(newKey.key);
+      expect(info).toBeDefined();
+      expect(info.plan).toBe('basic');
+    });
+  });
 });
+
