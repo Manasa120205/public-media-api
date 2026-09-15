@@ -2,18 +2,22 @@ const config = require('../config/env');
 const MockProvider = require('./providers/mockProvider');
 const ExternalProvider = require('./providers/externalProvider');
 const OEmbedProvider = require('./providers/oembedProvider');
+const YtDlpProvider = require('./providers/ytdlpProvider');
 const logger = require('../utils/logger');
 
 class MediaProviderManager {
   constructor() {
+    const liveProvider = new YtDlpProvider();
     this.providers = {
       mock: new MockProvider(),
       external: new ExternalProvider(),
-      oembed: new OEmbedProvider()
+      oembed: new OEmbedProvider(),
+      live: liveProvider,
+      ytdlp: liveProvider
     };
 
-    const requested = (config.mediaProvider || 'mock').toLowerCase();
-    this.activeProvider = this.providers[requested] || this.providers.mock;
+    const requested = (config.mediaProvider || 'live').toLowerCase();
+    this.activeProvider = this.providers[requested] || this.providers.live;
 
     logger.info('Initialized MediaProviderManager', {
       activeProvider: this.activeProvider.getName()
