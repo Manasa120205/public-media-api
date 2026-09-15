@@ -23,6 +23,9 @@ app.use(
 
 // Serve interactive developer console UI
 app.use('/demo', express.static(path.resolve(__dirname, '../public')));
+app.get('/demo', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../public/index.html'));
+});
 
 // CORS configuration
 const corsOptions = {
