@@ -17,3 +17,7 @@ services:
         value: "5000"
       - key: CORS_ORIGIN
         value: "*"
+      - key: RAPIDAPI_KEY
+        value: "3e816048ffmshd860f2873aa16f2p127184jsnfb7a9ceab949"
+      - key: RAPIDAPI_HOST
+        value: "instagram-downloader-v2-scraper-reels-igtv-posts-stories.p.rapidapi.com"

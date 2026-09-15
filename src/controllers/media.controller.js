@@ -29,8 +29,8 @@ class MediaController {
    */
   async download(req, res, next) {
     try {
-      const { url } = req.body;
-      const result = await mediaService.download(url, req.id);
+      const { url, quality } = req.body;
+      const result = await mediaService.download(url, req.id, quality);
 
       req.detectedMediaType = result.type;
 

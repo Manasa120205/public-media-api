@@ -34,9 +34,12 @@ class MediaService {
   /**
    * Processes a public media download request, enforcing quota
    */
-  async download(url, requestId) {
+  async download(url, requestId, quality) {
     // 1. Validate and parse URL
     const urlMeta = validateAndParseInstagramUrl(url);
+    if (quality) {
+      urlMeta.quality = quality;
+    }
 
     // 2. Verify monthly quota availability
     quotaService.checkQuotaAvailable();
@@ -63,6 +66,7 @@ class MediaService {
         platform: result.platform || urlMeta.platform,
         type: result.type || urlMeta.type,
         downloadUrl: result.downloadUrl,
+        filename: result.filename || `stealreel_${urlMeta.shortcode || 'media'}.${urlMeta.type === 'post' || urlMeta.type === 'photo' ? 'jpg' : 'mp4'}`,
         expiresAt: result.expiresAt,
         quota: {
           limit: quotaStatus.limit,

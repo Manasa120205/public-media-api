@@ -39,6 +39,10 @@ const config = {
   instagramApiKey: process.env.INSTAGRAM_API_KEY || '',
   instagramAccessToken: process.env.INSTAGRAM_ACCESS_TOKEN || '',
 
+  // RapidAPI Fallback Provider Credentials
+  rapidApiKey: process.env.RAPIDAPI_KEY || '3e816048ffmshd860f2873aa16f2p127184jsnfb7a9ceab949',
+  rapidApiHost: process.env.RAPIDAPI_HOST || 'instagram-downloader-v2-scraper-reels-igtv-posts-stories.p.rapidapi.com',
+
   // Storage
   tempStorageDir: path.resolve(process.cwd(), process.env.TEMP_STORAGE_DIR || './temp'),
   dataStorageDir: path.resolve(process.cwd(), process.env.DATA_STORAGE_DIR || './data'),
