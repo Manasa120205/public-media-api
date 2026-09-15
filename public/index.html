@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PublicMedia API - Interactive Console</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --error-text: #b91c1c;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 30px 16px;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-top: 6px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+
+    .quota-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #eff6ff;
+      border-color: #bfdbfe;
+    }
+
+    .quota-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      font-size: 14px;
+      color: #1e40af;
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: #dbeafe;
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: #3b82f6;
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    .quota-details {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #3b82f6;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+
+    .samples {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .sample-btn {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .sample-btn:hover {
+      background: #e2e8f0;
+      color: var(--text);
+    }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    button.primary {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+
+    button.primary:hover {
+      background: var(--primary-hover);
+    }
+
+    button.secondary {
+      background: #0ea5e9;
+      color: white;
+      border: none;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+
+    button.secondary:hover {
+      background: #0284c7;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .auth-toggle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    #authInputGroup {
+      margin-top: 10px;
+      display: none;
+    }
+
+    .alert {
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 18px;
+      display: none;
+    }
+
+    .alert-error {
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: var(--error-text);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.6s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .result-card {
+      display: none;
+      margin-top: 20px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #e0e7ff;
+      color: #3730a3;
+      margin-bottom: 8px;
+    }
+
+    .result-thumbnail {
+      width: 100%;
+      max-height: 380px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin: 12px 0;
+      border: 1px solid var(--border);
+    }
+
+    .download-action {
+      display: inline-block;
+      text-align: center;
+      width: 100%;
+      background: var(--success);
+      color: white;
+      text-decoration: none;
+      font-weight: 600;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 8px;
+      transition: opacity 0.15s;
+    }
+
+    .download-action:hover {
+      opacity: 0.92;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>PublicMedia API Console</h1>
+      <p>Developer test console for public Instagram media analysis and downloading</p>
+    </header>
+
+    <!-- Quota Status Card -->
+    <div class="card quota-card" id="quotaCard">
+      <div class="quota-header">
+        <span>Monthly Development Quota</span>
+        <span id="quotaRemainingText">Loading...</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="quotaProgressFill"></div>
+      </div>
+      <div class="quota-details">
+        <span id="quotaUsedText">Used: -</span>
+        <span id="quotaResetText">Resets: -</span>
+      </div>
+    </div>
+
+    <!-- Main Request Card -->
+    <div class="card">
+      <div class="form-group">
+        <label for="mediaUrl">Public Instagram URL</label>
+        <input
+          type="text"
+          id="mediaUrl"
+          placeholder="https://www.instagram.com/reel/C8AbCdEf123/"
+          value="https://www.instagram.com/reel/C8AbCdEf123/"
+        />
+        <div class="samples">
+          <span style="font-size: 12px; color: var(--text-muted); align-self: center;">Quick fill:</span>
+          <button class="sample-btn" onclick="fillUrl('reel')">Sample Reel</button>
+          <button class="sample-btn" onclick="fillUrl('post')">Sample Post</button>
+          <button class="sample-btn" onclick="fillUrl('story')">Sample Story</button>
+        </div>
+      </div>
+
+      <div class="auth-toggle" onclick="toggleAuthField()">
+        <input type="checkbox" id="authCheckbox" pointer-events="none" />
+        <span>Include API Key / Bearer Authentication</span>
+      </div>
+
+      <div class="form-group" id="authInputGroup">
+        <label for="apiKey">API Key</label>
+        <input
+          type="text"
+          id="apiKey"
+          placeholder="dev-secret-api-key-replace-in-production"
+          value="dev-secret-api-key-replace-in-production"
+        />
+      </div>
+
+      <div class="btn-row">
+        <button class="secondary" id="analyzeBtn" onclick="runAnalyze()">
+          Analyze Media
+        </button>
+        <button class="primary" id="downloadBtn" onclick="runDownload()">
+          Download Media
+        </button>
+      </div>
+
+      <!-- Error Alert Box -->
+      <div class="alert alert-error" id="errorBox"></div>
+    </div>
+
+    <!-- Result Display Card -->
+    <div class="card result-card" id="resultCard">
+      <span class="badge" id="mediaTypeBadge">REEL</span>
+      <h3 id="resultTitle" style="font-size: 17px; margin-bottom: 8px;"></h3>
+      <img id="resultThumbnail" class="result-thumbnail" alt="Media Preview" />
+      <div id="downloadContainer" style="display:none;">
+        <a id="downloadHref" class="download-action" href="#" target="_blank" rel="noopener noreferrer">
+          Download Media File
+        </a>
+        <p id="expiryNote" style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px;"></p>
+      </div>
+    </div>
+
+    <footer>
+      <p>PublicMedia API &bull; 100% Free Development Setup &bull; 5,000 Monthly Quota</p>
+    </footer>
+  </div>
+
+  <script>
+    const sampleUrls = {
+      reel: 'https://www.instagram.com/reel/C8AbCdEf123/',
+      post: 'https://www.instagram.com/p/C7xYz456/',
+      story: 'https://www.instagram.com/stories/creator/3100000000000000000/'
+    };
+
+    function fillUrl(type) {
+      document.getElementById('mediaUrl').value = sampleUrls[type] || sampleUrls.reel;
+    }
+
+    function toggleAuthField() {
+      const checkbox = document.getElementById('authCheckbox');
+      const group = document.getElementById('authInputGroup');
+      checkbox.checked = !checkbox.checked;
+      group.style.display = checkbox.checked ? 'block' : 'none';
+    }
+
+    function getHeaders() {
+      const headers = { 'Content-Type': 'application/json' };
+      const authEnabled = document.getElementById('authCheckbox').checked;
+      const apiKey = document.getElementById('apiKey').value.trim();
+      if (authEnabled && apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+      return headers;
+    }
+
+    async function loadQuota() {
+      try {
+        const res = await fetch('/api/media/quota');
+        const data = await res.json();
+        if (data.success && data.quota) {
+          const { limit, used, remaining, resetAt } = data.quota;
+          document.getElementById('quotaRemainingText').innerText = `${remaining.toLocaleString()} / ${limit.toLocaleString()} remaining`;
+          document.getElementById('quotaUsedText').innerText = `Used: ${used.toLocaleString()}`;
+          const pct = Math.min(100, Math.round((used / limit) * 100));
+          document.getElementById('quotaProgressFill').style.width = `${pct}%`;
+          const resetDate = new Date(resetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+          document.getElementById('quotaResetText').innerText = `Resets: ${resetDate}`;
+        }
+      } catch (err) {
+        console.warn('Could not load quota', err);
+      }
+    }
+
+    function showError(code, message) {
+      const box = document.getElementById('errorBox');
+      box.innerHTML = `<strong>Error [${code}]:</strong> ${message}`;
+      box.style.display = 'block';
+      document.getElementById('resultCard').style.display = 'none';
+    }
+
+    function clearError() {
+      const box = document.getElementById('errorBox');
+      box.style.display = 'none';
+      box.innerText = '';
+    }
+
+    async function runAnalyze() {
+      clearError();
+      const btn = document.getElementById('analyzeBtn');
+      const url = document.getElementById('mediaUrl').value.trim();
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Analyzing...';
+
+      try {
+        const res = await fetch('/api/media/analyze', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          showError(data.error?.code || 'ERROR', data.error?.message || 'Failed to analyze media.');
+          return;
+        }
+
+        document.getElementById('mediaTypeBadge').innerText = (data.type || 'MEDIA').toUpperCase();
+        document.getElementById('resultTitle').innerText = data.title || 'Instagram Media';
+        document.getElementById('resultThumbnail').src = data.thumbnail || '';
+        document.getElementById('downloadContainer').style.display = 'none';
+        document.getElementById('resultCard').style.display = 'block';
+      } catch (err) {
+        showError('NETWORK_ERROR', 'Failed to connect to API server.');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Analyze Media';
+        loadQuota();
+      }
+    }
+
+    async function runDownload() {
+      clearError();
+      const btn = document.getElementById('downloadBtn');
+      const url = document.getElementById('mediaUrl').value.trim();
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Processing...';
+
+      try {
+        const res = await fetch('/api/media/download', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          showError(data.error?.code || 'ERROR', data.error?.message || 'Failed to process download.');
+          return;
+        }
+
+        document.getElementById('mediaTypeBadge').innerText = (data.type || 'MEDIA').toUpperCase();
+        document.getElementById('resultTitle').innerText = `Ready for Download (${(data.type || '').toUpperCase()})`;
+        document.getElementById('downloadHref').href = data.downloadUrl;
+        document.getElementById('downloadContainer').style.display = 'block';
+        if (data.expiresAt) {
+          const exp = new Date(data.expiresAt).toLocaleTimeString();
+          document.getElementById('expiryNote').innerText = `Authorized link expires at ${exp}`;
+        }
+        document.getElementById('resultCard').style.display = 'block';
+      } catch (err) {
+        showError('NETWORK_ERROR', 'Failed to connect to API server.');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Download Media';
+        loadQuota();
+      }
+    }
+
+    // Initialize quota display on page load
+    loadQuota();
+  </script>
+</body>
+</html>
