@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: public-media-api
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: NODE_ENV
+        value: production
+      - key: MEDIA_PROVIDER
+        value: live
+      - key: MONTHLY_QUOTA_ENABLED
+        value: "true"
+      - key: MONTHLY_DOWNLOAD_LIMIT
+        value: "5000"
+      - key: CORS_ORIGIN
+        value: "*"
