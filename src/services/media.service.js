@@ -27,6 +27,7 @@ class MediaService {
       url: result.url || urlMeta.cleanUrl,
       title: result.title,
       thumbnail: result.thumbnail,
+      videoUrl: result.videoUrl || null,
       available: result.available
     };
   }

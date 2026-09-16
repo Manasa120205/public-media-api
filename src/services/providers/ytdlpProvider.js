@@ -346,6 +346,82 @@ class YtDlpProvider extends BaseProvider {
   }
 
   /**
+   * Extracts pure MP3 audio from a media stream using ffmpeg or yt-dlp
+   */
+  async extractPureAudio(sourceUrl, shortcode) {
+    return new Promise((resolve) => {
+      const tempDir = path.resolve(config.tempStorageDir || './temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const safeShortcode = (shortcode || '').replace(/[^a-zA-Z0-9_-]/g, '') || String(Date.now());
+      const outputFilename = `stealreel_${safeShortcode}_audio.mp3`;
+      const outputPath = path.join(tempDir, outputFilename);
+
+      if (fs.existsSync(outputPath)) {
+        const stats = fs.statSync(outputPath);
+        if (stats.size > 1000) {
+          return resolve(`/api/media/stream/${outputFilename}`);
+        }
+      }
+
+      // Fast ffmpeg audio extraction without video stream (-vn)
+      const ffmpegArgs = [
+        '-y',
+        '-i',
+        sourceUrl,
+        '-vn',
+        '-c:a',
+        'libmp3lame',
+        '-b:a',
+        '192k',
+        outputPath
+      ];
+
+      execFile('ffmpeg', ffmpegArgs, { timeout: 35000 }, (err) => {
+        if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
+          logger.info('Extracted pure MP3 audio via ffmpeg', { file: outputFilename });
+          return resolve(`/api/media/stream/${outputFilename}`);
+        }
+
+        // Fallback: yt-dlp audio extraction
+        const ytdlpArgs = [
+          '-m',
+          'yt_dlp',
+          '--no-warnings',
+          '--no-check-certificates',
+          '-f',
+          'bestaudio/best',
+          '-x',
+          '--audio-format',
+          'mp3',
+          '--extractor-args',
+          'instagram:app_id=936619743392459',
+          '--add-header',
+          'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          '-o',
+          outputPath,
+          sourceUrl
+        ];
+
+        execFile('python', ytdlpArgs, { timeout: 45000 }, (ytdlpErr) => {
+          if (!ytdlpErr && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
+            logger.info('Extracted pure MP3 audio via yt-dlp', { file: outputFilename });
+            resolve(`/api/media/stream/${outputFilename}`);
+          } else {
+            logger.warn('Failed pure audio extraction', {
+              ffmpegErr: err?.message,
+              ytdlpErr: ytdlpErr?.message
+            });
+            resolve(null);
+          }
+        });
+      });
+    });
+  }
+
+  /**
    * Analyzes public media and extracts live metadata and CDN thumbnails
    */
   async analyzeMedia(urlMeta) {
@@ -363,6 +439,7 @@ class YtDlpProvider extends BaseProvider {
       const first = mediaList[0] || {};
       const isVideo = first.is_video ?? (first.video_url ? true : urlMeta.type !== 'photo');
       const thumb = first.thumb || first.thumbnail || first.display_url || first.url || null;
+      const videoUrl = first.video_url || (first.is_video ? first.url : null) || (Array.isArray(first.videos) && first.videos[0]?.url) || null;
 
       if (thumb || first.video_url || first.url) {
         return {
@@ -372,6 +449,7 @@ class YtDlpProvider extends BaseProvider {
           url: urlMeta.cleanUrl,
           title: first.caption || rapidData.caption || `Instagram ${isVideo ? 'Reel' : 'Post'}`,
           thumbnail: thumb,
+          videoUrl: isVideo ? videoUrl : null,
           author: rapidData.owner?.username || first.owner?.username || null,
           available: true
         };
@@ -397,6 +475,7 @@ class YtDlpProvider extends BaseProvider {
         (raw.thumbnails && raw.thumbnails[raw.thumbnails.length - 1]?.url) ||
         (raw.thumbnails && raw.thumbnails[0]?.url) ||
         null;
+      const videoUrl = this.extractStreamUrl(raw, 'original');
 
       return {
         success: true,
@@ -405,6 +484,7 @@ class YtDlpProvider extends BaseProvider {
         url: urlMeta.cleanUrl,
         title,
         thumbnail,
+        videoUrl: urlMeta.type !== 'photo' ? videoUrl : null,
         author: raw.uploader || raw.uploader_id || null,
         available: true
       };
@@ -419,6 +499,7 @@ class YtDlpProvider extends BaseProvider {
   async downloadMedia(urlMeta) {
     let raw = null;
     let directUrl = null;
+    const isAudio = (urlMeta.quality || '').toLowerCase() === 'audio';
 
     // TIER 1: Try yt-dlp with progressive audio filter
     try {
@@ -465,14 +546,24 @@ class YtDlpProvider extends BaseProvider {
       }
     }
 
+    // CRITICAL FOR AUDIO: If user requested audio, extract pure MP3 with NO video stream!
+    if (isAudio) {
+      logger.info('User requested audio download: extracting pure MP3 without video tracks', {
+        url: urlMeta.cleanUrl
+      });
+      const pureAudioUrl = await this.extractPureAudio(directUrl || urlMeta.cleanUrl, urlMeta.shortcode);
+      if (pureAudioUrl) {
+        directUrl = pureAudioUrl;
+      }
+    }
+
     // TIER 3: If still no progressive URL, attempt server-side ffmpeg muxing
     if (!directUrl) {
-      const isAudioOnly = (urlMeta.quality || '').toLowerCase() === 'audio';
       logger.info('Attempting server-side ffmpeg muxing', {
         url: urlMeta.cleanUrl,
-        isAudio: isAudioOnly
+        isAudio
       });
-      directUrl = await this.muxDASHStreams(urlMeta.cleanUrl, urlMeta.shortcode, isAudioOnly);
+      directUrl = await this.muxDASHStreams(urlMeta.cleanUrl, urlMeta.shortcode, isAudio);
     }
 
     if (!directUrl) {
