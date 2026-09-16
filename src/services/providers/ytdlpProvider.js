@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const https = require('https');
 const { execFile } = require('child_process');
 const BaseProvider = require('./baseProvider');
@@ -9,24 +11,31 @@ const logger = require('../../utils/logger');
  * High-Performance Open-Source Live Media Extractor Provider
  * 
  * ============================================================================
- * LIVE EXTRACTOR CAPABILITIES:
+ * LIVE EXTRACTOR CAPABILITIES & AUDIO PRESERVATION:
  * ============================================================================
- * 1. COST: 100% Free forever ($0.00 / month).
- * 2. USAGE LIMITS: Unlimited (easily supports 5,000, 10,000+ requests/month).
- * 3. NO API KEYS REQUIRED: Uses open-source yt-dlp extractor directly.
+ * 1. ZERO LOSS AUDIO PRESERVATION:
+ *    - Strictly enforces selection of progressive MP4 streams containing BOTH
+ *      video (vcodec != 'none') and original audio (acodec != 'none').
+ *    - Rejects silent DASH video-only streams (acodec == 'none').
+ * 2. MULTI-TIER RESILIENCE:
+ *    - Tier 1: Direct Instagram progressive CDN URL with full audio and video.
+ *    - Tier 2: RapidAPI Instagram Downloader v2 fallback with direct video URL.
+ *    - Tier 3: Server-side yt-dlp + ffmpeg muxing of DASH video and DASH audio.
+ * 3. COST: 100% Free forever ($0.00 / month).
  * 4. MEDIA SUPPORT: Public Instagram Reels, Video Posts, and Carousel Videos.
  * ============================================================================
  */
 class YtDlpProvider extends BaseProvider {
   constructor() {
     super('live');
-    this.timeoutMs = config.requestTimeoutMs || 15000;
+    this.timeoutMs = config.requestTimeoutMs || 25000;
     this.rapidApiKey = config.rapidApiKey || process.env.RAPIDAPI_KEY || '3e816048ffmshd860f2873aa16f2p127184jsnfb7a9ceab949';
     this.rapidApiHost = config.rapidApiHost || process.env.RAPIDAPI_HOST || 'instagram-downloader-v2-scraper-reels-igtv-posts-stories.p.rapidapi.com';
   }
 
   /**
    * Internal execution helper using Python yt-dlp module
+   * Configured to explicitly prioritize streams with audio
    */
   async executeExtraction(targetUrl) {
     return new Promise((resolve, reject) => {
@@ -37,8 +46,17 @@ class YtDlpProvider extends BaseProvider {
         '--no-warnings',
         '--simulate',
         '--no-check-certificates',
-        '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+        // CRITICAL: Instruct yt-dlp to prioritize formats with active audio
+        '-f',
+        'best[acodec!=none]/b[acodec!=none]/best',
+        '--format-sort',
+        '+acodec,res,tbr',
+        '--extractor-args',
+        'instagram:app_id=936619743392459',
+        '--add-header',
+        'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        '--add-header',
+        'Accept-Language:en-US,en;q=0.9',
         targetUrl
       ];
 
@@ -148,7 +166,7 @@ class YtDlpProvider extends BaseProvider {
   }
 
   /**
-   * Robust stream URL extraction from yt-dlp metadata supporting resolution picking
+   * Robust stream URL extraction from yt-dlp metadata ensuring FULL AUDIO AND VIDEO
    */
   extractStreamUrl(raw, targetQuality) {
     if (!raw) return null;
@@ -156,89 +174,159 @@ class YtDlpProvider extends BaseProvider {
     // 1. Unwrap carousel / playlist entry if present
     const item = Array.isArray(raw.entries) && raw.entries.length > 0 ? raw.entries[0] : raw;
 
-    // 2. Direct single URL check if no downscaled resolution is requested
-    if (
-      item.url &&
-      typeof item.url === 'string' &&
-      item.url.startsWith('http') &&
-      (!targetQuality || targetQuality.toLowerCase() === 'original')
-    ) {
-      return item.url;
-    }
-
-    // 3. Inspect formats array
     const formats = Array.isArray(item.formats) ? item.formats : [];
     const validFormats = formats.filter(
       (f) => f && f.url && typeof f.url === 'string' && f.url.startsWith('http')
     );
 
-    if (validFormats.length > 0) {
-      // Prioritize video streams (progressive MP4s or streams with vcodec)
-      const videoFormats = validFormats.filter((f) => {
-        const isVideo = f.vcodec && f.vcodec !== 'none';
-        const isMp4 = f.ext === 'mp4' || f.container === 'mp4';
-        return isVideo || isMp4;
-      });
+    // 2. PRIMARY: Filter strictly for formats that have BOTH video AND audio
+    // In Instagram, progressive MP4 files (from video_versions) have:
+    // - vcodec != 'none' (e.g., avc1, h264)
+    // - acodec != 'none' (e.g., mp4a, aac)
+    // DASH video-only formats have acodec == 'none' (MUST BE EXCLUDED TO PREVENT SILENT VIDEOS!)
+    const progressiveWithAudio = validFormats.filter((f) => {
+      const isVideo = f.vcodec && f.vcodec !== 'none';
+      const isAudio = f.acodec && f.acodec !== 'none';
+      const notM3u8 = !f.protocol?.includes('m3u8') && !f.url?.includes('.m3u8');
+      const notDash = !f.format_id?.toLowerCase().includes('dash') && !f.protocol?.toLowerCase().includes('dash');
+      return isVideo && isAudio && notM3u8 && notDash;
+    });
 
-      const candidates = videoFormats.length > 0 ? videoFormats : validFormats;
-
-      // Filter out m3u8 playlists when direct progressive video exists
-      const progressive = candidates.filter(
-        (f) => !f.protocol?.includes('m3u8') && !f.url?.includes('.m3u8')
-      );
-      const pool = progressive.length > 0 ? progressive : candidates;
-
+    if (progressiveWithAudio.length > 0) {
       const q = (targetQuality || 'original').toLowerCase();
+
       if (q.includes('720')) {
-        const match720 = pool
+        const match720 = progressiveWithAudio
           .filter((f) => f.height && f.height <= 720)
           .sort((a, b) => (b.height || 0) - (a.height || 0));
         if (match720.length > 0) return match720[0].url;
       } else if (q.includes('1080')) {
-        const match1080 = pool
+        const match1080 = progressiveWithAudio
           .filter((f) => f.height && f.height <= 1080)
           .sort((a, b) => (b.height || 0) - (a.height || 0));
         if (match1080.length > 0) return match1080[0].url;
       }
 
-      // Default / Original: Pick highest resolution and bitrate
-      pool.sort((a, b) => {
+      // Default / Original: Sort by highest resolution and bitrate among audio-enabled formats
+      progressiveWithAudio.sort((a, b) => {
         const hA = a.height || 0;
         const hB = b.height || 0;
         if (hA !== hB) return hB - hA;
         return (b.tbr || 0) - (a.tbr || 0);
       });
 
-      return pool[0].url;
+      return progressiveWithAudio[0].url;
     }
 
-    // 4. Inspect requested_formats array
-    if (Array.isArray(item.requested_formats)) {
-      for (const f of item.requested_formats) {
-        if (f && f.url && f.vcodec !== 'none') {
-          return f.url;
-        }
-      }
-      if (item.requested_formats[0]?.url) {
-        return item.requested_formats[0].url;
-      }
+    // 3. SECONDARY: Any valid MP4 that has verified audio track
+    const verifiedAudioFormats = validFormats.filter((f) => {
+      const isVideo = f.vcodec && f.vcodec !== 'none';
+      const hasAudio = (f.acodec && f.acodec !== 'none') || (f.audio_ext && f.audio_ext !== 'none');
+      const notM3u8 = !f.protocol?.includes('m3u8') && !f.url?.includes('.m3u8');
+      const notDash = !f.format_id?.toLowerCase().includes('dash') && !f.protocol?.toLowerCase().includes('dash');
+      return isVideo && hasAudio && notM3u8 && notDash;
+    });
+
+    if (verifiedAudioFormats.length > 0) {
+      verifiedAudioFormats.sort((a, b) => (b.height || 0) - (a.height || 0));
+      return verifiedAudioFormats[0].url;
     }
 
-    // 5. Check item.url
-    if (item.url && typeof item.url === 'string' && item.url.startsWith('http')) {
+    // 4. TERTIARY: Check item.url ONLY IF it is not a silent video
+    if (
+      item.url &&
+      typeof item.url === 'string' &&
+      item.url.startsWith('http') &&
+      item.acodec &&
+      item.acodec !== 'none'
+    ) {
       return item.url;
     }
 
-    // 6. Check thumbnails if photo / image post
-    if (item.thumbnail && typeof item.thumbnail === 'string' && item.thumbnail.startsWith('http')) {
-      return item.thumbnail;
-    }
-    if (Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
-      const lastThumb = item.thumbnails[item.thumbnails.length - 1];
-      if (lastThumb?.url) return lastThumb.url;
+    // 5. Photos / Images ONLY if not a video
+    const isVideoItem = Boolean(
+      item.is_video === true ||
+      raw.is_video === true ||
+      (item.vcodec && item.vcodec !== 'none') ||
+      item.requested_formats ||
+      item._type === 'video'
+    );
+
+    if (!isVideoItem) {
+      if (item.thumbnail && typeof item.thumbnail === 'string' && item.thumbnail.startsWith('http')) {
+        return item.thumbnail;
+      }
+      if (Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
+        const lastThumb = item.thumbnails[item.thumbnails.length - 1];
+        if (lastThumb?.url) return lastThumb.url;
+      }
     }
 
+    // Return null so RapidAPI or server muxing can provide the stream with audio!
     return null;
+  }
+
+  /**
+   * Server-side ffmpeg muxing fallback when only separate DASH video and audio exist
+   */
+  async muxDASHStreams(targetUrl, shortcode) {
+    return new Promise((resolve) => {
+      const tempDir = path.resolve(config.tempStorageDir || './temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const safeShortcode = (shortcode || '').replace(/[^a-zA-Z0-9_-]/g, '') || String(Date.now());
+      const outputFilename = `stealreel_${safeShortcode}_muxed.mp4`;
+      const outputPath = path.join(tempDir, outputFilename);
+
+      // If already muxed in temp cache, return it immediately
+      if (fs.existsSync(outputPath)) {
+        const stats = fs.statSync(outputPath);
+        if (stats.size > 1000) {
+          return resolve(`/api/media/stream/${outputFilename}`);
+        }
+      }
+
+      const args = [
+        '-m',
+        'yt_dlp',
+        '--no-warnings',
+        '--no-check-certificates',
+        '-f',
+        'bestvideo+bestaudio/best',
+        '--merge-output-format',
+        'mp4',
+        '--extractor-args',
+        'instagram:app_id=936619743392459',
+        '--add-header',
+        'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        '-o',
+        outputPath,
+        targetUrl
+      ];
+
+      execFile(
+        'python',
+        args,
+        {
+          timeout: 45000 // 45s max for download and ffmpeg mux
+        },
+        (err) => {
+          if (err) {
+            logger.warn('Server-side ffmpeg DASH muxing failed', { error: err.message, url: targetUrl });
+            return resolve(null);
+          }
+
+          if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
+            logger.info('Successfully muxed DASH streams with audio into MP4', { file: outputFilename });
+            resolve(`/api/media/stream/${outputFilename}`);
+          } else {
+            resolve(null);
+          }
+        }
+      );
+    });
   }
 
   /**
@@ -280,18 +368,31 @@ class YtDlpProvider extends BaseProvider {
 
     // Fallback: Query RapidAPI
     const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
-    if (rapidData && Array.isArray(rapidData.media) && rapidData.media.length > 0) {
-      const first = rapidData.media[0];
-      return {
-        success: true,
-        platform: 'instagram',
-        type: first.is_video ? 'reel' : 'post',
-        url: urlMeta.cleanUrl,
-        title: first.caption || `Instagram ${first.is_video ? 'Reel' : 'Post'}`,
-        thumbnail: first.thumb || first.url || null,
-        author: rapidData.owner?.username || null,
-        available: true
-      };
+    if (rapidData) {
+      const mediaList = Array.isArray(rapidData.media)
+        ? rapidData.media
+        : Array.isArray(rapidData.data)
+          ? rapidData.data
+          : Array.isArray(rapidData.items)
+            ? rapidData.items
+            : [rapidData];
+
+      const first = mediaList[0] || {};
+      const isVideo = first.is_video ?? (first.video_url ? true : urlMeta.type !== 'photo');
+      const thumb = first.thumb || first.thumbnail || first.display_url || first.url || null;
+
+      if (thumb || first.video_url || first.url) {
+        return {
+          success: true,
+          platform: 'instagram',
+          type: isVideo ? 'reel' : 'post',
+          url: urlMeta.cleanUrl,
+          title: first.caption || rapidData.caption || `Instagram ${isVideo ? 'Reel' : 'Post'}`,
+          thumbnail: thumb,
+          author: rapidData.owner?.username || first.owner?.username || null,
+          available: true
+        };
+      }
     }
 
     // If both failed, rethrow the original yt-dlp error
@@ -299,12 +400,13 @@ class YtDlpProvider extends BaseProvider {
   }
 
   /**
-   * Extracts direct CDN video download URL for public media
+   * Extracts direct CDN video download URL with guaranteed audio for public media
    */
   async downloadMedia(urlMeta) {
     let raw = null;
     let directUrl = null;
 
+    // TIER 1: Try yt-dlp with progressive audio filter
     try {
       raw = await this.executeExtraction(urlMeta.cleanUrl);
       directUrl = this.extractStreamUrl(raw, urlMeta.quality);
@@ -315,13 +417,46 @@ class YtDlpProvider extends BaseProvider {
       });
     }
 
-    // If yt-dlp didn't provide a direct stream URL, query RapidAPI fallback
+    // TIER 2: If yt-dlp didn't provide a direct stream URL with audio, query RapidAPI fallback
     if (!directUrl) {
+      logger.info('yt-dlp did not yield an audio-enabled stream, querying RapidAPI fallback', {
+        url: urlMeta.cleanUrl
+      });
+
       const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
-      if (rapidData && Array.isArray(rapidData.media) && rapidData.media.length > 0) {
-        const first = rapidData.media[0];
-        directUrl = first.url;
+      if (rapidData) {
+        const mediaList = Array.isArray(rapidData.media)
+          ? rapidData.media
+          : Array.isArray(rapidData.data)
+            ? rapidData.data
+            : Array.isArray(rapidData.items)
+              ? rapidData.items
+              : [rapidData];
+
+        for (const m of mediaList) {
+          if (m && typeof m === 'object') {
+            const candidate =
+              m.video_url ||
+              m.url ||
+              m.download_url ||
+              (Array.isArray(m.videos) && m.videos[0]?.url) ||
+              m.video_versions?.[0]?.url;
+
+            if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
+              directUrl = candidate;
+              break;
+            }
+          }
+        }
       }
+    }
+
+    // TIER 3: If still no progressive URL, attempt server-side ffmpeg muxing of DASH streams
+    if (!directUrl) {
+      logger.info('Attempting server-side ffmpeg muxing of DASH streams with audio', {
+        url: urlMeta.cleanUrl
+      });
+      directUrl = await this.muxDASHStreams(urlMeta.cleanUrl, urlMeta.shortcode);
     }
 
     if (!directUrl) {

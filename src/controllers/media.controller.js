@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+const config = require('../config/env');
 const mediaService = require('../services/media.service');
 const quotaService = require('../services/quota.service');
 
@@ -34,7 +37,65 @@ class MediaController {
 
       req.detectedMediaType = result.type;
 
+      // If downloadUrl is relative (from local DASH stream muxing), turn it into a full URL
+      if (result.downloadUrl && result.downloadUrl.startsWith('/')) {
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        const host = req.get('host');
+        result.downloadUrl = `${protocol}://${host}${result.downloadUrl}`;
+      }
+
       return res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /api/media/stream/:filename
+   * Streams locally muxed temporary video file with HTTP Range support and download headers
+   */
+  stream(req, res, next) {
+    try {
+      const filename = path.basename(req.params.filename);
+      // Validate filename to avoid directory traversal
+      if (!/^stealreel_[a-zA-Z0-9_-]+\.(mp4|jpg|jpeg|png)$/i.test(filename)) {
+        return res.status(400).json({ error: 'Invalid filename' });
+      }
+
+      const filePath = path.resolve(config.tempStorageDir, filename);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Requested media stream not found or expired' });
+      }
+
+      const stat = fs.statSync(filePath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Type', filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunksize = end - start + 1;
+        const file = fs.createReadStream(filePath, { start, end });
+
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunksize,
+          'Content-Type': filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg'
+        });
+        file.pipe(res);
+      } else {
+        res.writeHead(200, {
+          'Content-Length': fileSize,
+          'Content-Type': filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg'
+        });
+        fs.createReadStream(filePath).pipe(res);
+      }
     } catch (err) {
       next(err);
     }

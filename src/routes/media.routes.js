@@ -28,4 +28,7 @@ router.post(
 // GET /api/media/quota
 router.get('/quota', mediaController.getQuota);
 
+// GET /api/media/stream/:filename
+router.get('/stream/:filename', mediaController.stream);
+
 module.exports = router;
