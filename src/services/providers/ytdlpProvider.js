@@ -131,7 +131,7 @@ class YtDlpProvider extends BaseProvider {
             'x-rapidapi-key': this.rapidApiKey,
             'x-rapidapi-host': this.rapidApiHost
           },
-          timeout: this.timeoutMs
+          timeout: 3500
         },
         (res) => {
           let body = '';
