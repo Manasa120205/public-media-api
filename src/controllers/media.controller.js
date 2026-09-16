@@ -58,7 +58,7 @@ class MediaController {
     try {
       const filename = path.basename(req.params.filename);
       // Validate filename to avoid directory traversal
-      if (!/^stealreel_[a-zA-Z0-9_-]+\.(mp4|jpg|jpeg|png)$/i.test(filename)) {
+      if (!/^stealreel_[a-zA-Z0-9_-]+\.(mp4|mp3|m4a|jpg|jpeg|png)$/i.test(filename)) {
         return res.status(400).json({ error: 'Invalid filename' });
       }
 
@@ -70,10 +70,13 @@ class MediaController {
       const stat = fs.statSync(filePath);
       const fileSize = stat.size;
       const range = req.headers.range;
+      const isAudio = filename.endsWith('.mp3') || filename.endsWith('.m4a');
+      const isVideo = filename.endsWith('.mp4');
+      const contentType = isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg';
 
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Content-Type', filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg');
+      res.setHeader('Content-Type', contentType);
 
       if (range) {
         const parts = range.replace(/bytes=/, '').split('-');
@@ -86,13 +89,13 @@ class MediaController {
           'Content-Range': `bytes ${start}-${end}/${fileSize}`,
           'Accept-Ranges': 'bytes',
           'Content-Length': chunksize,
-          'Content-Type': filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg'
+          'Content-Type': contentType
         });
         file.pipe(res);
       } else {
         res.writeHead(200, {
           'Content-Length': fileSize,
-          'Content-Type': filename.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg'
+          'Content-Type': contentType
         });
         fs.createReadStream(filePath).pipe(res);
       }

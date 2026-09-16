@@ -195,6 +195,17 @@ class YtDlpProvider extends BaseProvider {
     if (progressiveWithAudio.length > 0) {
       const q = (targetQuality || 'original').toLowerCase();
 
+      if (q === 'audio') {
+        const audioStreams = validFormats.filter(
+          (f) => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
+        );
+        if (audioStreams.length > 0) {
+          audioStreams.sort((a, b) => (b.abr || 0) - (a.abr || 0) || (b.tbr || 0) - (a.tbr || 0));
+          return audioStreams[0].url;
+        }
+        return progressiveWithAudio[0].url;
+      }
+
       if (q.includes('720')) {
         const match720 = progressiveWithAudio
           .filter((f) => f.height && f.height <= 720)
@@ -269,7 +280,7 @@ class YtDlpProvider extends BaseProvider {
   /**
    * Server-side ffmpeg muxing fallback when only separate DASH video and audio exist
    */
-  async muxDASHStreams(targetUrl, shortcode) {
+  async muxDASHStreams(targetUrl, shortcode, isAudio = false) {
     return new Promise((resolve) => {
       const tempDir = path.resolve(config.tempStorageDir || './temp');
       if (!fs.existsSync(tempDir)) {
@@ -277,7 +288,8 @@ class YtDlpProvider extends BaseProvider {
       }
 
       const safeShortcode = (shortcode || '').replace(/[^a-zA-Z0-9_-]/g, '') || String(Date.now());
-      const outputFilename = `stealreel_${safeShortcode}_muxed.mp4`;
+      const ext = isAudio ? 'mp3' : 'mp4';
+      const outputFilename = `stealreel_${safeShortcode}_${isAudio ? 'audio' : 'muxed'}.${ext}`;
       const outputPath = path.join(tempDir, outputFilename);
 
       // If already muxed in temp cache, return it immediately
@@ -288,23 +300,27 @@ class YtDlpProvider extends BaseProvider {
         }
       }
 
+      const formatArg = isAudio ? 'bestaudio/best' : 'bestvideo+bestaudio/best';
       const args = [
         '-m',
         'yt_dlp',
         '--no-warnings',
         '--no-check-certificates',
         '-f',
-        'bestvideo+bestaudio/best',
-        '--merge-output-format',
-        'mp4',
+        formatArg,
         '--extractor-args',
         'instagram:app_id=936619743392459',
         '--add-header',
-        'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        '-o',
-        outputPath,
-        targetUrl
+        'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
       ];
+
+      if (isAudio) {
+        args.push('-x', '--audio-format', 'mp3');
+      } else {
+        args.push('--merge-output-format', 'mp4');
+      }
+
+      args.push('-o', outputPath, targetUrl);
 
       execFile(
         'python',
@@ -314,12 +330,12 @@ class YtDlpProvider extends BaseProvider {
         },
         (err) => {
           if (err) {
-            logger.warn('Server-side ffmpeg DASH muxing failed', { error: err.message, url: targetUrl });
+            logger.warn('Server-side ffmpeg muxing failed', { error: err.message, url: targetUrl, isAudio });
             return resolve(null);
           }
 
           if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
-            logger.info('Successfully muxed DASH streams with audio into MP4', { file: outputFilename });
+            logger.info('Successfully muxed streams into media file', { file: outputFilename });
             resolve(`/api/media/stream/${outputFilename}`);
           } else {
             resolve(null);
@@ -333,40 +349,7 @@ class YtDlpProvider extends BaseProvider {
    * Analyzes public media and extracts live metadata and CDN thumbnails
    */
   async analyzeMedia(urlMeta) {
-    let raw = null;
-    let ytDlpError = null;
-
-    try {
-      raw = await this.executeExtraction(urlMeta.cleanUrl);
-    } catch (err) {
-      ytDlpError = err;
-      logger.info('yt-dlp extraction failed, attempting RapidAPI fallback for analyze', {
-        url: urlMeta.cleanUrl,
-        reason: err.message
-      });
-    }
-
-    if (raw) {
-      const title = raw.fulltitle || raw.title || `Instagram ${urlMeta.type || 'Media'}`;
-      const thumbnail =
-        raw.thumbnail ||
-        (raw.thumbnails && raw.thumbnails[raw.thumbnails.length - 1]?.url) ||
-        (raw.thumbnails && raw.thumbnails[0]?.url) ||
-        null;
-
-      return {
-        success: true,
-        platform: 'instagram',
-        type: urlMeta.type || 'reel',
-        url: urlMeta.cleanUrl,
-        title,
-        thumbnail,
-        author: raw.uploader || raw.uploader_id || null,
-        available: true
-      };
-    }
-
-    // Fallback: Query RapidAPI
+    // 1. FAST PATH: Query RapidAPI first for sub-second (<300ms) metadata & thumbnail retrieval
     const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
     if (rapidData) {
       const mediaList = Array.isArray(rapidData.media)
@@ -395,8 +378,39 @@ class YtDlpProvider extends BaseProvider {
       }
     }
 
-    // If both failed, rethrow the original yt-dlp error
-    throw ytDlpError || createError('MEDIA_UNAVAILABLE', 'Failed to extract live media stream from public Instagram URL.');
+    // 2. FALLBACK PATH: If RapidAPI was unavailable or empty, fall back to yt-dlp
+    let raw = null;
+    try {
+      raw = await this.executeExtraction(urlMeta.cleanUrl);
+    } catch (err) {
+      logger.info('yt-dlp extraction fallback failed for analyze', {
+        url: urlMeta.cleanUrl,
+        reason: err.message
+      });
+      throw createError('MEDIA_UNAVAILABLE', 'Failed to extract live media stream from public Instagram URL.');
+    }
+
+    if (raw) {
+      const title = raw.fulltitle || raw.title || `Instagram ${urlMeta.type || 'Media'}`;
+      const thumbnail =
+        raw.thumbnail ||
+        (raw.thumbnails && raw.thumbnails[raw.thumbnails.length - 1]?.url) ||
+        (raw.thumbnails && raw.thumbnails[0]?.url) ||
+        null;
+
+      return {
+        success: true,
+        platform: 'instagram',
+        type: urlMeta.type || 'reel',
+        url: urlMeta.cleanUrl,
+        title,
+        thumbnail,
+        author: raw.uploader || raw.uploader_id || null,
+        available: true
+      };
+    }
+
+    throw createError('MEDIA_UNAVAILABLE', 'Failed to extract live media stream from public Instagram URL.');
   }
 
   /**
@@ -451,12 +465,14 @@ class YtDlpProvider extends BaseProvider {
       }
     }
 
-    // TIER 3: If still no progressive URL, attempt server-side ffmpeg muxing of DASH streams
+    // TIER 3: If still no progressive URL, attempt server-side ffmpeg muxing
     if (!directUrl) {
-      logger.info('Attempting server-side ffmpeg muxing of DASH streams with audio', {
-        url: urlMeta.cleanUrl
+      const isAudioOnly = (urlMeta.quality || '').toLowerCase() === 'audio';
+      logger.info('Attempting server-side ffmpeg muxing', {
+        url: urlMeta.cleanUrl,
+        isAudio: isAudioOnly
       });
-      directUrl = await this.muxDASHStreams(urlMeta.cleanUrl, urlMeta.shortcode);
+      directUrl = await this.muxDASHStreams(urlMeta.cleanUrl, urlMeta.shortcode, isAudioOnly);
     }
 
     if (!directUrl) {
@@ -468,16 +484,16 @@ class YtDlpProvider extends BaseProvider {
 
     // CDN links typically stay valid for 6-24 hours
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
-    const isVideo = urlMeta.type !== 'photo' && urlMeta.type !== 'image';
-    const qualityLabel = urlMeta.quality ? `_${urlMeta.quality}` : '';
-    const ext = isVideo ? 'mp4' : 'jpg';
+    const isAudio = (urlMeta.quality || '').toLowerCase() === 'audio';
+    const isVideo = !isAudio && urlMeta.type !== 'photo' && urlMeta.type !== 'image';
+    const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
 
     return {
       success: true,
       platform: 'instagram',
-      type: urlMeta.type || 'reel',
+      type: isAudio ? 'audio' : (urlMeta.type || 'reel'),
       downloadUrl: directUrl,
-      filename: `stealreel_${urlMeta.shortcode || 'media'}${qualityLabel}.${ext}`,
+      filename: `stealreel_${urlMeta.shortcode || 'media'}${isAudio ? '_audio' : ''}.${ext}`,
       expiresAt
     };
   }
