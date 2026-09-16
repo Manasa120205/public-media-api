@@ -67,7 +67,11 @@ class MediaService {
         platform: result.platform || urlMeta.platform,
         type: result.type || urlMeta.type,
         downloadUrl: result.downloadUrl,
-        filename: result.filename || `stealreel_${urlMeta.shortcode || 'media'}.${urlMeta.type === 'post' || urlMeta.type === 'photo' ? 'jpg' : 'mp4'}`,
+        filename:
+          result.filename ||
+          (quality === 'audio'
+            ? `stealreel_${urlMeta.shortcode || 'media'}_audio.mp3`
+            : `stealreel_${urlMeta.shortcode || 'media'}.${urlMeta.type === 'post' || urlMeta.type === 'photo' ? 'jpg' : 'mp4'}`),
         expiresAt: result.expiresAt,
         quota: {
           limit: quotaStatus.limit,
