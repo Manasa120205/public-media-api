@@ -501,48 +501,44 @@ class YtDlpProvider extends BaseProvider {
     let directUrl = null;
     const isAudio = (urlMeta.quality || '').toLowerCase() === 'audio';
 
-    // TIER 1: Try yt-dlp with progressive audio filter
-    try {
-      raw = await this.executeExtraction(urlMeta.cleanUrl);
-      directUrl = this.extractStreamUrl(raw, urlMeta.quality);
-    } catch (err) {
-      logger.info('yt-dlp download extraction failed, attempting RapidAPI fallback', {
-        url: urlMeta.cleanUrl,
-        reason: err.message
-      });
-    }
+    // TIER 1: FAST PATH - Query RapidAPI first for sub-second (<300ms) download stream retrieval
+    const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
+    if (rapidData) {
+      const mediaList = Array.isArray(rapidData.media)
+        ? rapidData.media
+        : Array.isArray(rapidData.data)
+          ? rapidData.data
+          : Array.isArray(rapidData.items)
+            ? rapidData.items
+            : [rapidData];
 
-    // TIER 2: If yt-dlp didn't provide a direct stream URL with audio, query RapidAPI fallback
-    if (!directUrl) {
-      logger.info('yt-dlp did not yield an audio-enabled stream, querying RapidAPI fallback', {
-        url: urlMeta.cleanUrl
-      });
+      for (const m of mediaList) {
+        if (m && typeof m === 'object') {
+          const candidate =
+            m.video_url ||
+            m.url ||
+            m.download_url ||
+            (Array.isArray(m.videos) && m.videos[0]?.url) ||
+            m.video_versions?.[0]?.url;
 
-      const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
-      if (rapidData) {
-        const mediaList = Array.isArray(rapidData.media)
-          ? rapidData.media
-          : Array.isArray(rapidData.data)
-            ? rapidData.data
-            : Array.isArray(rapidData.items)
-              ? rapidData.items
-              : [rapidData];
-
-        for (const m of mediaList) {
-          if (m && typeof m === 'object') {
-            const candidate =
-              m.video_url ||
-              m.url ||
-              m.download_url ||
-              (Array.isArray(m.videos) && m.videos[0]?.url) ||
-              m.video_versions?.[0]?.url;
-
-            if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
-              directUrl = candidate;
-              break;
-            }
+          if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
+            directUrl = candidate;
+            break;
           }
         }
+      }
+    }
+
+    // TIER 2: Fallback to yt-dlp only if RapidAPI did not return a stream URL
+    if (!directUrl) {
+      try {
+        raw = await this.executeExtraction(urlMeta.cleanUrl);
+        directUrl = this.extractStreamUrl(raw, urlMeta.quality);
+      } catch (err) {
+        logger.info('yt-dlp download extraction fallback failed', {
+          url: urlMeta.cleanUrl,
+          reason: err.message
+        });
       }
     }
 
