@@ -575,7 +575,6 @@ class YtDlpProvider extends BaseProvider {
 
     // CDN links typically stay valid for 6-24 hours
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
-    const isAudio = (urlMeta.quality || '').toLowerCase() === 'audio';
     const isVideo = !isAudio && urlMeta.type !== 'photo' && urlMeta.type !== 'image';
     const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
 
