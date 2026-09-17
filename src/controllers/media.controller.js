@@ -74,7 +74,11 @@ class MediaController {
       const isVideo = filename.endsWith('.mp4');
       const contentType = isVideo ? 'video/mp4' : isAudio ? 'audio/mpeg' : 'image/jpeg';
 
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      const isInline = req.query.mode === 'inline' || req.headers.range || req.headers['sec-fetch-dest'] === 'video';
+      res.setHeader(
+        'Content-Disposition',
+        isInline ? 'inline' : `attachment; filename="${filename}"`
+      );
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Type', contentType);
 

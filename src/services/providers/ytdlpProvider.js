@@ -28,7 +28,7 @@ const logger = require('../../utils/logger');
 class YtDlpProvider extends BaseProvider {
   constructor() {
     super('live');
-    this.timeoutMs = 2500;
+    this.timeoutMs = 15000;
     this.rapidApiKey = config.rapidApiKey || process.env.RAPIDAPI_KEY || '3e816048ffmshd860f2873aa16f2p127184jsnfb7a9ceab949';
     this.rapidApiHost = config.rapidApiHost || process.env.RAPIDAPI_HOST || 'instagram-downloader-v2-scraper-reels-igtv-posts-stories.p.rapidapi.com';
   }
@@ -243,13 +243,12 @@ class YtDlpProvider extends BaseProvider {
       return verifiedAudioFormats[0].url;
     }
 
-    // 4. TERTIARY: Check item.url ONLY IF it is not a silent video
+    // 4. TERTIARY: Check item.url if it is a video URL
     if (
       item.url &&
       typeof item.url === 'string' &&
       item.url.startsWith('http') &&
-      item.acodec &&
-      item.acodec !== 'none'
+      (!item.acodec || item.acodec !== 'none')
     ) {
       return item.url;
     }
@@ -273,8 +272,48 @@ class YtDlpProvider extends BaseProvider {
       }
     }
 
-    // Return null so RapidAPI or server muxing can provide the stream with audio!
+    if (item.url && typeof item.url === 'string' && item.url.startsWith('http')) {
+      return item.url;
+    }
+
     return null;
+  }
+
+  /**
+   * Direct download of full media file to tempStorageDir using yt-dlp
+   */
+  async downloadToFile(targetUrl, outputFilename) {
+    return new Promise((resolve) => {
+      const tempDir = path.resolve(config.tempStorageDir || './temp');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const outputPath = path.join(tempDir, outputFilename);
+      if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
+        return resolve(`/api/media/stream/${outputFilename}`);
+      }
+
+      const args = [
+        '-m',
+        'yt_dlp',
+        '--no-warnings',
+        '--no-check-certificates',
+        '-o',
+        outputPath,
+        targetUrl
+      ];
+
+      execFile('python', args, { timeout: 25000 }, (err) => {
+        if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
+          logger.info('Direct video saved to tempStorageDir', { file: outputFilename });
+          resolve(`/api/media/stream/${outputFilename}`);
+        } else {
+          logger.warn('Direct video download notice', { error: err?.message });
+          resolve(null);
+        }
+      });
+    });
   }
 
   /**
@@ -490,7 +529,16 @@ class YtDlpProvider extends BaseProvider {
         (raw.thumbnails && raw.thumbnails[raw.thumbnails.length - 1]?.url) ||
         (raw.thumbnails && raw.thumbnails[0]?.url) ||
         null;
-      const videoUrl = this.extractStreamUrl(raw, 'original');
+      let videoUrl = this.extractStreamUrl(raw, 'original');
+
+      // Download to temp storage to ensure reliable local playback and download with zero CORS/403 errors
+      if (finalType !== 'post') {
+        const filename = `stealreel_${urlMeta.shortcode || 'media'}.mp4`;
+        const savedUrl = await this.downloadToFile(urlMeta.cleanUrl, filename);
+        if (savedUrl) {
+          videoUrl = savedUrl;
+        }
+      }
 
       return {
         success: true,
@@ -581,8 +629,13 @@ class YtDlpProvider extends BaseProvider {
     const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
     const filename = `stealreel_${urlMeta.shortcode || (urlMeta.type || 'media')}${isAudio ? '_audio' : ''}.${ext}`;
 
-    if (!directUrl) {
-      directUrl = `/api/media/stream/${filename}`;
+    if (!directUrl || directUrl.startsWith('/api/media/stream/')) {
+      const savedStream = await this.downloadToFile(urlMeta.cleanUrl, filename);
+      if (savedStream) {
+        directUrl = savedStream;
+      } else {
+        directUrl = `/api/media/stream/${filename}`;
+      }
     }
 
     // CDN links typically stay valid for 6-24 hours

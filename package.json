@@ -21,6 +21,7 @@
   "dependencies": {
     "@jerrycoder/instagram-api": "^2.5.9",
     "ab-downloader": "^2.0.0",
+    "btch-downloader": "^6.4.0",
     "cakkatrok-instagram-downloader": "^2.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
