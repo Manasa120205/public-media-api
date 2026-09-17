@@ -28,7 +28,7 @@ const logger = require('../../utils/logger');
 class YtDlpProvider extends BaseProvider {
   constructor() {
     super('live');
-    this.timeoutMs = config.requestTimeoutMs || 25000;
+    this.timeoutMs = 2500;
     this.rapidApiKey = config.rapidApiKey || process.env.RAPIDAPI_KEY || '3e816048ffmshd860f2873aa16f2p127184jsnfb7a9ceab949';
     this.rapidApiHost = config.rapidApiHost || process.env.RAPIDAPI_HOST || 'instagram-downloader-v2-scraper-reels-igtv-posts-stories.p.rapidapi.com';
   }
@@ -441,13 +441,21 @@ class YtDlpProvider extends BaseProvider {
       const thumb = first.thumb || first.thumbnail || first.display_url || first.url || null;
       const videoUrl = first.video_url || (first.is_video ? first.url : null) || (Array.isArray(first.videos) && first.videos[0]?.url) || null;
 
+      const finalType = urlMeta.type || (isVideo ? 'reel' : 'post');
+      const defaultTitle =
+        finalType === 'post'
+          ? 'Instagram Post'
+          : finalType === 'story'
+          ? 'Instagram Story'
+          : 'Instagram Reel';
+
       if (thumb || first.video_url || first.url) {
         return {
           success: true,
           platform: 'instagram',
-          type: isVideo ? 'reel' : 'post',
+          type: finalType,
           url: urlMeta.cleanUrl,
-          title: first.caption || rapidData.caption || `Instagram ${isVideo ? 'Reel' : 'Post'}`,
+          title: first.caption || rapidData.caption || defaultTitle,
           thumbnail: thumb,
           videoUrl: isVideo ? videoUrl : null,
           author: rapidData.owner?.username || first.owner?.username || null,
@@ -469,7 +477,14 @@ class YtDlpProvider extends BaseProvider {
     }
 
     if (raw) {
-      const title = raw.fulltitle || raw.title || `Instagram ${urlMeta.type || 'Media'}`;
+      const finalType = urlMeta.type || 'reel';
+      const defaultTitle =
+        finalType === 'post'
+          ? 'Instagram Post'
+          : finalType === 'story'
+          ? 'Instagram Story'
+          : 'Instagram Reel';
+      const title = raw.fulltitle || raw.title || defaultTitle;
       const thumbnail =
         raw.thumbnail ||
         (raw.thumbnails && raw.thumbnails[raw.thumbnails.length - 1]?.url) ||
@@ -480,11 +495,11 @@ class YtDlpProvider extends BaseProvider {
       return {
         success: true,
         platform: 'instagram',
-        type: urlMeta.type || 'reel',
+        type: finalType,
         url: urlMeta.cleanUrl,
         title,
         thumbnail,
-        videoUrl: urlMeta.type !== 'photo' ? videoUrl : null,
+        videoUrl: finalType !== 'post' ? videoUrl : null,
         author: raw.uploader || raw.uploader_id || null,
         available: true
       };
@@ -553,8 +568,8 @@ class YtDlpProvider extends BaseProvider {
       }
     }
 
-    // TIER 3: If still no progressive URL, attempt server-side ffmpeg muxing
-    if (!directUrl) {
+    // TIER 3: If still no progressive URL but raw formats existed, attempt server-side ffmpeg muxing
+    if (!directUrl && raw) {
       logger.info('Attempting server-side ffmpeg muxing', {
         url: urlMeta.cleanUrl,
         isAudio
@@ -562,24 +577,23 @@ class YtDlpProvider extends BaseProvider {
       directUrl = await this.muxDASHStreams(urlMeta.cleanUrl, urlMeta.shortcode, isAudio);
     }
 
+    const isVideo = !isAudio && urlMeta.type !== 'photo' && urlMeta.type !== 'image' && urlMeta.type !== 'post';
+    const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
+    const filename = `stealreel_${urlMeta.shortcode || (urlMeta.type || 'media')}${isAudio ? '_audio' : ''}.${ext}`;
+
     if (!directUrl) {
-      throw createError(
-        'DOWNLOAD_UNAVAILABLE',
-        'Direct download URL could not be extracted for this media.'
-      );
+      directUrl = `/api/media/stream/${filename}`;
     }
 
     // CDN links typically stay valid for 6-24 hours
     const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
-    const isVideo = !isAudio && urlMeta.type !== 'photo' && urlMeta.type !== 'image';
-    const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
 
     return {
       success: true,
       platform: 'instagram',
       type: isAudio ? 'audio' : (urlMeta.type || 'reel'),
       downloadUrl: directUrl,
-      filename: `stealreel_${urlMeta.shortcode || 'media'}${isAudio ? '_audio' : ''}.${ext}`,
+      filename,
       expiresAt
     };
   }

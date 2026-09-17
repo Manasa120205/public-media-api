@@ -127,14 +127,19 @@ function validateAndParseInstagramUrl(rawUrl) {
   } else if (firstSegment === 'p' || firstSegment === 'tv') {
     type = 'post';
     shortcode = segments[1] || null;
-  } else if (firstSegment === 'stories') {
+  } else if (firstSegment === 'stories' || firstSegment === 'story') {
     type = 'story';
-    username = segments[1] || null;
-    shortcode = segments[2] || null;
+    if (segments[1] && segments[1].toLowerCase() === 'highlights') {
+      username = 'highlights';
+      shortcode = segments[2] || null;
+    } else {
+      username = segments[1] || null;
+      shortcode = segments[2] || segments[1] || null;
+    }
   } else {
-    // Other routes (e.g. /username/p/shortcode)
-    if (segments.length >= 3 && segments[1].toLowerCase() === 'p') {
-      type = 'post';
+    // Other routes (e.g. /username/p/shortcode or /username/reel/shortcode)
+    if (segments.length >= 3 && (segments[1].toLowerCase() === 'p' || segments[1].toLowerCase() === 'reel')) {
+      type = segments[1].toLowerCase() === 'reel' ? 'reel' : 'post';
       username = segments[0];
       shortcode = segments[2];
     } else {

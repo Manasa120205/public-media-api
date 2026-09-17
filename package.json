@@ -19,11 +19,16 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@jerrycoder/instagram-api": "^2.5.9",
+    "ab-downloader": "^2.0.0",
+    "cakkatrok-instagram-downloader": "^2.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
-    "helmet": "^8.0.0"
+    "helmet": "^8.0.0",
+    "instagram-url-direct": "^2.0.7",
+    "snapsave-media-downloader": "^2.5.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
