@@ -531,13 +531,12 @@ class YtDlpProvider extends BaseProvider {
         null;
       let videoUrl = this.extractStreamUrl(raw, 'original');
 
-      // Download to temp storage to ensure reliable local playback and download with zero CORS/403 errors
+      // Pre-fetch in background to temp storage for reliable offline/attachment fallback without blocking response
       if (finalType !== 'post') {
         const filename = `stealreel_${urlMeta.shortcode || 'media'}.mp4`;
-        const savedUrl = await this.downloadToFile(urlMeta.cleanUrl, filename);
-        if (savedUrl) {
-          videoUrl = savedUrl;
-        }
+        this.downloadToFile(urlMeta.cleanUrl, filename).catch((err) => {
+          logger.warn('Background download to file notice', { error: err?.message });
+        });
       }
 
       return {
