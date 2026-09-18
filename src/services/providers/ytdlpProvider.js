@@ -328,7 +328,7 @@ except Exception as e:
         targetUrl
       ];
 
-      execFile('python', args, { timeout: 35000 }, (err) => {
+      execFile('python', args, { timeout: 12000 }, (err) => {
         if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
           logger.info('Direct video with audio saved to tempStorageDir', { file: outputFilename });
           resolve(`/api/media/stream/${outputFilename}`);
@@ -787,11 +787,11 @@ except Exception as e:
     const safeUsername = rawCreator ? rawCreator.replace(/[^a-zA-Z0-9_.]/g, '') : 'download';
     const filename = `instagram_${finalType}_${safeUsername}${isAudio ? '_audio' : ''}.${ext}`;
 
-    if (!directUrl || directUrl.startsWith('/api/media/stream/')) {
+    if (!directUrl) {
       const savedStream = await this.downloadToFile(urlMeta.cleanUrl, filename);
       if (savedStream) {
         directUrl = savedStream;
-      } else if (!directUrl) {
+      } else {
         throw createError('MEDIA_UNAVAILABLE', 'Could not locate downloadable media stream for this post or story.');
       }
     }
