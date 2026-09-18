@@ -635,18 +635,75 @@ except Exception as e:
     let directUrl = null;
     let rapidData = null;
     const isAudio = (urlMeta.quality || '').toLowerCase() === 'audio';
+    const isStory = (urlMeta.type || '').toLowerCase() === 'story' ||
+      urlMeta.cleanUrl.includes('/stories/') ||
+      urlMeta.cleanUrl.includes('/story/');
 
-    // PRIMARY FAST PATH: In-process Python yt-dlp extraction with guaranteed progressive audio (<2.5s)
-    try {
-      raw = await this.executeExtraction(urlMeta.cleanUrl);
-      if (raw && !raw._error) {
-        directUrl = this.extractStreamUrl(raw, urlMeta.quality);
+    // FOR STORIES: Instagram stories block anonymous scrapers without cookies.
+    // Use high-performance story extractor fast path directly (<1.8s)
+    if (isStory) {
+      try {
+        const btch = require('btch-downloader');
+        if (btch && typeof btch.igdl === 'function') {
+          const btchRes = await Promise.race([
+            btch.igdl(urlMeta.cleanUrl),
+            new Promise((_, r) => setTimeout(() => r(new Error('story timeout')), 12000))
+          ]);
+          if (btchRes && btchRes.status && Array.isArray(btchRes.result) && btchRes.result.length > 0) {
+            const chosen = btchRes.result.find((i) => i && (i.url || i.video)) || btchRes.result[0];
+            const candidate = chosen?.url || chosen?.video || chosen?.thumbnail;
+            if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
+              directUrl = candidate;
+              logger.info('Extracted Instagram story stream via story extractor (<2s)', {
+                url: urlMeta.cleanUrl
+              });
+            }
+          }
+        }
+      } catch (storyErr) {
+        logger.info('Story fast path notice, trying standard path', { error: storyErr?.message });
       }
-    } catch (err) {
-      logger.info('Primary extraction attempt notice', {
-        url: urlMeta.cleanUrl,
-        reason: err.message
-      });
+    }
+
+    // PRIMARY FAST PATH FOR REELS & POSTS: In-process Python yt-dlp extraction with guaranteed progressive audio (<2.5s)
+    if (!directUrl && !isStory) {
+      try {
+        raw = await this.executeExtraction(urlMeta.cleanUrl);
+        if (raw && !raw._error) {
+          directUrl = this.extractStreamUrl(raw, urlMeta.quality);
+        }
+      } catch (err) {
+        logger.info('Primary extraction attempt notice', {
+          url: urlMeta.cleanUrl,
+          reason: err.message
+        });
+      }
+    }
+
+    // TIER 2: Fast multi-format extractor fallback (works for Reels, Posts, Carousels, Stories)
+    if (!directUrl) {
+      try {
+        const btch = require('btch-downloader');
+        if (btch && typeof btch.igdl === 'function') {
+          const btchRes = await Promise.race([
+            btch.igdl(urlMeta.cleanUrl),
+            new Promise((_, r) => setTimeout(() => r(new Error('btch timeout')), 12000))
+          ]);
+          if (btchRes && btchRes.status && Array.isArray(btchRes.result) && btchRes.result.length > 0) {
+            const chosen = btchRes.result.find((i) => i && (i.url || i.video)) || btchRes.result[0];
+            const candidate = chosen?.url || chosen?.video || chosen?.thumbnail;
+            if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
+              directUrl = candidate;
+              logger.info('Extracted media stream via multi-format extractor fallback', {
+                url: urlMeta.cleanUrl,
+                type: urlMeta.type
+              });
+            }
+          }
+        }
+      } catch (btchErr) {
+        logger.info('Multi-format extractor fallback notice', { error: btchErr?.message });
+      }
     }
 
     // Fallback only if direct progressive stream wasn't extracted
@@ -714,12 +771,16 @@ except Exception as e:
     }
 
     const finalType = isAudio ? 'audio' : (urlMeta.type || 'reel');
-    const isVideo = !isAudio && Boolean(
-      (directUrl && (directUrl.includes('.mp4') || directUrl.includes('mime_type=video_mp4') || directUrl.includes('/video'))) ||
-      (raw && (raw.is_video === true || (raw.vcodec && raw.vcodec !== 'none'))) ||
-      finalType === 'reel' ||
-      finalType === 'story'
+    const isImage = Boolean(
+      directUrl &&
+      (directUrl.includes('.jpg') ||
+        directUrl.includes('.jpeg') ||
+        directUrl.includes('.png') ||
+        directUrl.includes('.webp') ||
+        directUrl.includes('dst-jpg') ||
+        (urlMeta.type === 'photo' && !directUrl.includes('.mp4')))
     );
+    const isVideo = !isAudio && !isImage;
     const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
 
     const rawCreator = (rapidData?.owner?.username || raw?.uploader || raw?.uploader_id || urlMeta.username || '').replace(/^@/, '').trim();
