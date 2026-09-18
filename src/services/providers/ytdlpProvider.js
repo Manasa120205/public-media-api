@@ -192,6 +192,14 @@ except Exception as e:
     // 1. Unwrap carousel / playlist entry if present
     const item = Array.isArray(raw.entries) && raw.entries.length > 0 ? raw.entries[0] : raw;
 
+    const isVideoItem = Boolean(
+      item.is_video === true ||
+      raw.is_video === true ||
+      (item.vcodec && item.vcodec !== 'none') ||
+      item.requested_formats ||
+      item._type === 'video'
+    );
+
     const formats = Array.isArray(item.formats) ? item.formats : [];
     const validFormats = formats.filter(
       (f) => f && f.url && typeof f.url === 'string' && f.url.startsWith('http')
@@ -272,14 +280,6 @@ except Exception as e:
     }
 
     // 5. Photos / Images ONLY if not a video
-    const isVideoItem = Boolean(
-      item.is_video === true ||
-      raw.is_video === true ||
-      (item.vcodec && item.vcodec !== 'none') ||
-      item.requested_formats ||
-      item._type === 'video'
-    );
-
     if (!isVideoItem) {
       if (item.thumbnail && typeof item.thumbnail === 'string' && item.thumbnail.startsWith('http')) {
         return item.thumbnail;
@@ -633,6 +633,7 @@ except Exception as e:
   async downloadMedia(urlMeta) {
     let raw = null;
     let directUrl = null;
+    let rapidData = null;
     const isAudio = (urlMeta.quality || '').toLowerCase() === 'audio';
 
     // PRIMARY FAST PATH: In-process Python yt-dlp extraction with guaranteed progressive audio (<2.5s)
@@ -650,7 +651,7 @@ except Exception as e:
 
     // Fallback only if direct progressive stream wasn't extracted
     if (!directUrl) {
-      const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
+      rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
       if (rapidData) {
         const mediaList = Array.isArray(rapidData.media)
           ? rapidData.media
@@ -667,12 +668,26 @@ except Exception as e:
               m.url ||
               m.download_url ||
               (Array.isArray(m.videos) && m.videos[0]?.url) ||
-              m.video_versions?.[0]?.url;
+              m.video_versions?.[0]?.url ||
+              m.display_url ||
+              m.thumbnail ||
+              m.thumb;
 
             if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
               directUrl = candidate;
               break;
             }
+          }
+        }
+
+        if (!directUrl) {
+          const topCandidate =
+            rapidData.url ||
+            rapidData.download_url ||
+            rapidData.video_url ||
+            rapidData.display_url;
+          if (topCandidate && typeof topCandidate === 'string' && topCandidate.startsWith('http')) {
+            directUrl = topCandidate;
           }
         }
       }
@@ -699,7 +714,12 @@ except Exception as e:
     }
 
     const finalType = isAudio ? 'audio' : (urlMeta.type || 'reel');
-    const isVideo = !isAudio && finalType !== 'post';
+    const isVideo = !isAudio && Boolean(
+      (directUrl && (directUrl.includes('.mp4') || directUrl.includes('mime_type=video_mp4') || directUrl.includes('/video'))) ||
+      (raw && (raw.is_video === true || (raw.vcodec && raw.vcodec !== 'none'))) ||
+      finalType === 'reel' ||
+      finalType === 'story'
+    );
     const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
 
     const rawCreator = (rapidData?.owner?.username || raw?.uploader || raw?.uploader_id || urlMeta.username || '').replace(/^@/, '').trim();
@@ -710,8 +730,8 @@ except Exception as e:
       const savedStream = await this.downloadToFile(urlMeta.cleanUrl, filename);
       if (savedStream) {
         directUrl = savedStream;
-      } else {
-        directUrl = `/api/media/stream/${filename}`;
+      } else if (!directUrl) {
+        throw createError('MEDIA_UNAVAILABLE', 'Could not locate downloadable media stream for this post or story.');
       }
     }
 
