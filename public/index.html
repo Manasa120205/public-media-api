@@ -3,20 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PublicMedia API - Interactive Console</title>
+  <title>PublicMedia - Official Instagram Reel, Post &amp; Story Downloader</title>
   <style>
     :root {
       --primary: #4f46e5;
       --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
       --bg: #f8fafc;
       --card-bg: #ffffff;
+      --stat-bg: #f8fafc;
       --text: #0f172a;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --success: #10b981;
+      --text-muted: #475569;
+      --border: #cbd5e1;
+      --border-light: #e2e8f0;
+      --input-bg: #ffffff;
+      --success: #059669;
+      --success-bg: #ecfdf5;
+      --success-border: #a7f3d0;
+      --success-text: #065f46;
       --error-bg: #fef2f2;
       --error-border: #fecaca;
       --error-text: #b91c1c;
+      --badge-bg: #eff6ff;
+      --badge-text: #1d4ed8;
+      --badge-border: #bfdbfe;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --toggle-bg: #e2e8f0;
+    }
+
+    [data-theme="dark"] {
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-light: rgba(99, 102, 241, 0.15);
+      --bg: #09090b;
+      --card-bg: #18181b;
+      --stat-bg: #27272a;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --border: #27272a;
+      --border-light: #3f3f46;
+      --input-bg: #09090b;
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.12);
+      --success-border: rgba(16, 185, 129, 0.3);
+      --success-text: #34d399;
+      --error-bg: rgba(239, 68, 68, 0.12);
+      --error-border: rgba(239, 68, 68, 0.3);
+      --error-text: #f87171;
+      --badge-bg: rgba(99, 102, 241, 0.15);
+      --badge-text: #818cf8;
+      --badge-border: rgba(99, 102, 241, 0.3);
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+      --toggle-bg: #27272a;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,88 +65,231 @@
       background-color: var(--bg);
       color: var(--text);
       line-height: 1.5;
-      padding: 30px 16px;
+      padding: 24px 16px 48px;
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
 
     .container {
-      max-width: 680px;
+      max-width: 720px;
       margin: 0 auto;
+    }
+
+    /* Top Navigation & Theme Toggle */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .brand-mark {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .docs-nav-link {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      background: var(--primary-light);
+      transition: opacity 0.15s;
+    }
+    .docs-nav-link:hover { opacity: 0.85; }
+
+    .theme-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--toggle-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .theme-toggle-btn:hover {
+      border-color: var(--primary);
     }
 
     header {
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
+    }
+
+    .header-badge {
+      display: inline-block;
+      background: var(--primary-light);
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      margin-bottom: 8px;
     }
 
     header h1 {
       font-size: 28px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
+      font-weight: 800;
+      letter-spacing: -0.6px;
       color: var(--text);
     }
 
     header p {
       color: var(--text-muted);
-      font-size: 15px;
-      margin-top: 6px;
+      font-size: 14px;
+      margin-top: 4px;
+      font-weight: 500;
     }
 
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 24px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      box-shadow: var(--shadow-md);
       margin-bottom: 20px;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
     }
 
+    /* Quota Card */
     .quota-card {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      background: #eff6ff;
-      border-color: #bfdbfe;
+      border-top: 4px solid var(--primary);
     }
 
-    .quota-header {
+    .quota-top {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .quota-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .quota-badge {
+      background: var(--badge-bg);
+      color: var(--badge-text);
+      border: 1px solid var(--badge-border);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      letter-spacing: 0.3px;
+    }
+
+    .quota-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    @media (max-width: 600px) {
+      .quota-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .quota-stat-box {
+      background: var(--stat-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 10px;
+      text-align: center;
+    }
+
+    .quota-stat-label {
+      font-size: 11px;
       font-weight: 600;
-      font-size: 14px;
-      color: #1e40af;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .quota-stat-val {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+      margin-top: 4px;
+      line-height: 1.2;
+    }
+
+    .quota-stat-val.primary {
+      color: var(--primary);
+    }
+
+    .quota-stat-val.success {
+      color: var(--success);
+    }
+
+    .progress-section {
+      margin-top: 6px;
     }
 
     .progress-bar-bg {
       width: 100%;
-      height: 8px;
-      background: #dbeafe;
+      height: 9px;
+      background: var(--border-light);
       border-radius: 9999px;
       overflow: hidden;
     }
 
     .progress-bar-fill {
       height: 100%;
-      background: #3b82f6;
+      background: linear-gradient(90deg, #4f46e5, #818cf8);
       width: 0%;
       transition: width 0.4s ease;
+      border-radius: 9999px;
     }
 
-    .quota-details {
+    .progress-meta {
       display: flex;
       justify-content: space-between;
       font-size: 12px;
-      color: #3b82f6;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-top: 8px;
     }
 
+    /* Form Styles */
     .form-group {
       margin-bottom: 16px;
     }
 
     label {
       display: block;
-      font-size: 14px;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 700;
       margin-bottom: 6px;
       color: var(--text);
     }
@@ -118,12 +301,14 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      background: var(--input-bg);
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
 
     input[type="text"]:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
     }
 
     .samples {
@@ -131,66 +316,24 @@
       gap: 8px;
       margin-top: 8px;
       flex-wrap: wrap;
+      align-items: center;
     }
 
     .sample-btn {
-      background: #f1f5f9;
+      background: var(--stat-bg);
       border: 1px solid var(--border);
       color: var(--text-muted);
       font-size: 12px;
-      padding: 4px 10px;
+      padding: 5px 10px;
       border-radius: 6px;
       cursor: pointer;
-      transition: background 0.15s;
+      font-weight: 600;
+      transition: all 0.15s;
     }
 
     .sample-btn:hover {
-      background: #e2e8f0;
+      border-color: var(--primary);
       color: var(--text);
-    }
-
-    .btn-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 18px;
-    }
-
-    button.primary {
-      background: var(--primary);
-      color: white;
-      border: none;
-      padding: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background-color 0.15s;
-    }
-
-    button.primary:hover {
-      background: var(--primary-hover);
-    }
-
-    button.secondary {
-      background: #0ea5e9;
-      color: white;
-      border: none;
-      padding: 12px;
-      font-size: 14px;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background-color 0.15s;
-    }
-
-    button.secondary:hover {
-      background: #0284c7;
-    }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
     }
 
     .auth-toggle {
@@ -201,6 +344,7 @@
       align-items: center;
       gap: 6px;
       cursor: pointer;
+      user-select: none;
     }
 
     #authInputGroup {
@@ -208,8 +352,205 @@
       display: none;
     }
 
-    .alert {
+    /* Primary Action Buttons */
+    .action-btn-row {
+      margin-top: 18px;
+    }
+
+    button.btn-analyze {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: background-color 0.15s, transform 0.05s;
+    }
+
+    button.btn-analyze:hover {
+      background: var(--primary-hover);
+    }
+
+    button.btn-analyze:active {
+      transform: scale(0.99);
+    }
+
+    /* Result Card */
+    .result-card {
+      display: none;
+      margin-top: 20px;
+      border-left: 4px solid var(--primary);
+    }
+
+    /* Creator Profile Card */
+    .creator-profile-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: var(--stat-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+
+    .creator-avatar-wrap {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+    }
+
+    .creator-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid var(--primary);
+      box-shadow: var(--shadow-sm);
+      display: block;
+      background: #e2e8f0;
+    }
+
+    .creator-avatar-fallback {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4f46e5, #ec4899);
+      color: white;
+      font-size: 22px;
+      font-weight: 800;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border: 3px solid var(--primary);
+      box-shadow: var(--shadow-sm);
+      text-transform: uppercase;
+    }
+
+    .creator-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .creator-name-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .creator-name {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+      word-break: break-all;
+    }
+
+    .badge-tag {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-reel { background: #e0e7ff; color: #3730a3; }
+    .badge-post { background: #fef3c7; color: #92400e; }
+    .badge-story { background: #fce7f3; color: #9d174d; }
+
+    .creator-sub-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    .audio-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--success-bg);
+      color: var(--success-text);
+      border: 1px solid var(--success-border);
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+
+    .quality-badge {
+      display: inline-flex;
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+      border: 1px solid var(--badge-border);
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.4px;
+    }
+
+    /* Dynamic Action Button directly UNDER creator profile */
+    button.btn-download-action {
+      width: 100%;
+      background: #0284c7;
+      color: white;
+      border: none;
       padding: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: background-color 0.15s, transform 0.05s;
+    }
+
+    button.btn-download-action:hover {
+      background: #0369a1;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .download-success-box {
+      display: none;
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .download-link-btn {
+      display: inline-block;
+      background: var(--success);
+      color: white;
+      text-decoration: none;
+      font-weight: 700;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-top: 10px;
+      transition: opacity 0.15s;
+    }
+
+    .download-link-btn:hover {
+      opacity: 0.92;
+    }
+
+    /* Alert Box */
+    .alert {
+      padding: 14px 16px;
       border-radius: 8px;
       font-size: 14px;
       margin-top: 18px;
@@ -220,6 +561,7 @@
       background: var(--error-bg);
       border: 1px solid var(--error-border);
       color: var(--error-text);
+      font-weight: 500;
     }
 
     .spinner {
@@ -230,7 +572,7 @@
       border-radius: 50%;
       border-top-color: white;
       animation: spin 0.6s linear infinite;
-      margin-right: 6px;
+      margin-right: 8px;
       vertical-align: middle;
     }
 
@@ -238,77 +580,129 @@
       to { transform: rotate(360deg); }
     }
 
-    .result-card {
-      display: none;
-      margin-top: 20px;
+    /* Footer Section */
+    .footer-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1.2fr;
+      gap: 20px;
+      padding-top: 28px;
+      margin-top: 36px;
+      border-top: 1px solid var(--border-light);
     }
 
-    .badge {
-      display: inline-block;
-      font-size: 11px;
+    @media (max-width: 640px) {
+      .footer-columns {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .footer-col h4 {
+      font-size: 13px;
       font-weight: 700;
+      color: var(--text);
       text-transform: uppercase;
-      padding: 3px 8px;
-      border-radius: 4px;
-      background: #e0e7ff;
-      color: #3730a3;
-      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
     }
 
-    .result-thumbnail {
-      width: 100%;
-      max-height: 380px;
-      object-fit: cover;
-      border-radius: 8px;
-      margin: 12px 0;
-      border: 1px solid var(--border);
+    .footer-col ul {
+      list-style: none;
     }
 
-    .download-action {
-      display: inline-block;
-      text-align: center;
-      width: 100%;
-      background: var(--success);
-      color: white;
-      text-decoration: none;
-      font-weight: 600;
-      padding: 12px;
-      border-radius: 8px;
-      margin-top: 8px;
-      transition: opacity 0.15s;
+    .footer-col ul li {
+      margin-bottom: 6px;
     }
 
-    .download-action:hover {
-      opacity: 0.92;
-    }
-
-    footer {
-      text-align: center;
+    .footer-col a {
       font-size: 13px;
       color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .footer-col a:hover {
+      color: var(--primary);
+    }
+
+    .footer-contact-text {
+      font-size: 13px;
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .footer-contact-text:hover {
+      text-decoration: underline;
+    }
+
+    .footer-bottom {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
       margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-light);
     }
   </style>
 </head>
 <body>
   <div class="container">
+    <!-- Top Bar with Theme Switcher and Docs Link -->
+    <div class="top-bar">
+      <div class="brand-mark">
+        <span>⚡ PublicMedia API</span>
+        <span style="font-size: 11px; opacity: 0.7;">v1.0.0</span>
+      </div>
+      <div class="top-actions">
+        <a href="/docs" target="_blank" class="docs-nav-link">API Docs</a>
+        <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Toggle theme">
+          <span id="themeIcon">🌙</span>
+          <span id="themeLabel">Dark</span>
+        </button>
+      </div>
+    </div>
+
     <header>
-      <h1>PublicMedia API Console</h1>
-      <p>Developer test console for public Instagram media analysis and downloading</p>
+      <div class="header-badge">Official Release &bull; Persistent 5,000 Quota</div>
+      <h1>PublicMedia</h1>
+      <p>Fast, high-quality public Instagram Reel, Post, Story &amp; Audio downloader</p>
     </header>
 
-    <!-- Quota Status Card -->
+    <!-- Quota Status Card (Persistent 5,000 downloads/month) -->
     <div class="card quota-card" id="quotaCard">
-      <div class="quota-header">
-        <span>Monthly Development Quota</span>
-        <span id="quotaRemainingText">Loading...</span>
+      <div class="quota-top">
+        <div class="quota-title">
+          <span>⚡ Monthly Download Quota</span>
+        </div>
+        <span class="quota-badge">5,000 Downloads / Month</span>
       </div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" id="quotaProgressFill"></div>
+
+      <div class="quota-grid">
+        <div class="quota-stat-box">
+          <div class="quota-stat-label">Used</div>
+          <div class="quota-stat-val" id="quotaUsedVal">Loading...</div>
+        </div>
+        <div class="quota-stat-box">
+          <div class="quota-stat-label">Remaining</div>
+          <div class="quota-stat-val primary" id="quotaRemainingVal">Loading...</div>
+        </div>
+        <div class="quota-stat-box">
+          <div class="quota-stat-label">Current Month</div>
+          <div class="quota-stat-val" id="quotaMonthVal">Loading...</div>
+        </div>
+        <div class="quota-stat-box">
+          <div class="quota-stat-label">API Status</div>
+          <div class="quota-stat-val success" style="font-size: 13px; padding-top: 4px;">● Operational</div>
+        </div>
       </div>
-      <div class="quota-details">
-        <span id="quotaUsedText">Used: -</span>
-        <span id="quotaResetText">Resets: -</span>
+
+      <div class="progress-section">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="quotaProgressFill"></div>
+        </div>
+        <div class="progress-meta">
+          <span id="quotaProgressText">Loading quota usage...</span>
+          <span id="quotaResetText">Resets at end of month</span>
+        </div>
       </div>
     </div>
 
@@ -323,7 +717,7 @@
           value="https://www.instagram.com/reel/C8AbCdEf123/"
         />
         <div class="samples">
-          <span style="font-size: 12px; color: var(--text-muted); align-self: center;">Quick fill:</span>
+          <span style="font-size: 12px; color: var(--text-muted); font-weight: 600;">Quick fill:</span>
           <button class="sample-btn" onclick="fillUrl('reel')">Sample Reel</button>
           <button class="sample-btn" onclick="fillUrl('post')">Sample Post</button>
           <button class="sample-btn" onclick="fillUrl('story')">Sample Story</button>
@@ -336,7 +730,7 @@
       </div>
 
       <div class="form-group" id="authInputGroup">
-        <label for="apiKey">API Key</label>
+        <label for="apiKey" style="margin-top: 10px;">API Key</label>
         <input
           type="text"
           id="apiKey"
@@ -345,12 +739,9 @@
         />
       </div>
 
-      <div class="btn-row">
-        <button class="secondary" id="analyzeBtn" onclick="runAnalyze()">
-          Analyze Media
-        </button>
-        <button class="primary" id="downloadBtn" onclick="runDownload()">
-          Download Media
+      <div class="action-btn-row">
+        <button class="btn-analyze" id="analyzeBtn" onclick="runAnalyze()">
+          Analyze Link
         </button>
       </div>
 
@@ -358,37 +749,135 @@
       <div class="alert alert-error" id="errorBox"></div>
     </div>
 
-    <!-- Result Display Card -->
+    <!-- Fast Metadata Result Card (NO VIDEO PREVIEW) -->
     <div class="card result-card" id="resultCard">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span class="badge" id="mediaTypeBadge">REEL</span>
-        <span style="font-size:12px; color:var(--text-muted);" id="detectedCodeText"></span>
+      <!-- 1. Creator Profile Pictures and Creator Name -->
+      <div class="creator-profile-container">
+        <div class="creator-avatar-wrap">
+          <img
+            id="creatorAvatarImg"
+            class="creator-avatar"
+            src=""
+            alt="Creator Profile Picture"
+            referrerpolicy="no-referrer"
+            onerror="handleAvatarError(this)"
+          />
+          <div id="creatorAvatarFallback" class="creator-avatar-fallback">IG</div>
+        </div>
+        <div class="creator-details">
+          <div class="creator-name-row">
+            <h3 id="creatorNameText" class="creator-name">@username</h3>
+            <span class="badge-tag badge-reel" id="mediaTypeBadge">REEL</span>
+          </div>
+          <div class="creator-sub-row">
+            <span class="audio-badge" id="audioStatusBadge">
+              <span id="audioIcon">🎵</span>
+              <span id="audioStatusText">Original Audio Included</span>
+            </span>
+            <span class="quality-badge">Original Quality</span>
+          </div>
+        </div>
       </div>
-      <h3 id="resultTitle" style="font-size: 17px; margin: 8px 0;"></h3>
-      <img id="resultThumbnail" class="result-thumbnail" alt="Media Preview" />
-      
-      <!-- Video Player Preview -->
-      <video id="resultVideo" controls style="width:100%; max-height:380px; border-radius:8px; display:none; margin:10px 0; background:#000;"></video>
 
-      <div id="downloadContainer" style="display:none; margin-top:12px;">
-        <a id="downloadHref" class="download-action" href="#" target="_blank" rel="noopener noreferrer">
-          Download Media File (.mp4)
+      <!-- 2. Dynamic Download Option directly UNDER creator profile -->
+      <button class="btn-download-action" id="dynamicDownloadBtn" onclick="runDownload()">
+        Download Reel (Original Quality + Audio)
+      </button>
+
+      <!-- 3. Download Ready Box -->
+      <div class="download-success-box" id="downloadSuccessBox">
+        <p style="font-size: 14px; font-weight: 700; color: var(--success-text);">
+          Media Download Ready (Original Quality + Audio)!
+        </p>
+        <p id="downloadFilenameText" style="font-size: 12px; color: var(--text-muted); margin-top: 4px; font-family: monospace;"></p>
+        <a id="downloadHref" class="download-link-btn" href="#" target="_blank" rel="noopener noreferrer">
+          Download Media File
         </a>
-        <p id="expiryNote" style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px;"></p>
+        <p id="expiryNote" style="font-size: 11px; color: var(--text-muted); margin-top: 8px;"></p>
       </div>
     </div>
 
-    <footer>
-      <p>PublicMedia API &bull; 100% Free Development Setup &bull; 5,000 Monthly Quota</p>
-    </footer>
+    <!-- Footer Columns -->
+    <div class="footer-columns">
+      <div class="footer-col">
+        <h4>Tools</h4>
+        <ul>
+          <li><a href="#" onclick="fillUrl('reel')">Reel Downloader</a></li>
+          <li><a href="#" onclick="fillUrl('post')">Post Downloader</a></li>
+          <li><a href="#" onclick="fillUrl('story')">Story Downloader</a></li>
+          <li><a href="/docs" target="_blank">OpenAPI Specs</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="/api/health" target="_blank">System Health</a></li>
+          <li><a href="/api/quota" target="_blank">Live Quota</a></li>
+          <li><a href="/docs" target="_blank">Documentation</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="#">Terms of Service</a></li>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Fair Use Guidelines</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Contact and Reach Out</h4>
+        <ul>
+          <li>
+            <a href="mailto:info@steal.com" class="footer-contact-text">Mail us at info@steal.com</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>PublicMedia &bull; Official Standalone Release &bull; 5,000 Monthly Quota</p>
+    </div>
   </div>
 
   <script>
+    // Theme Management (Day + Night Dual Mode with localStorage persistence)
+    function initTheme() {
+      const saved = localStorage.getItem('pm_theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = saved || (prefersDark ? 'dark' : 'light');
+      applyTheme(theme);
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('pm_theme', theme);
+      const icon = document.getElementById('themeIcon');
+      const label = document.getElementById('themeLabel');
+      if (theme === 'dark') {
+        if (icon) icon.innerText = '☀';
+        if (label) label.innerText = 'Light';
+      } else {
+        if (icon) icon.innerText = '🌙';
+        if (label) label.innerText = 'Dark';
+      }
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'light';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
+    // Initialize Theme immediately
+    initTheme();
+
     const sampleUrls = {
       reel: 'https://www.instagram.com/reel/C8AbCdEf123/',
       post: 'https://www.instagram.com/p/C7xYz456/',
       story: 'https://www.instagram.com/stories/creator/3100000000000000000/'
     };
+
+    let currentAnalyzedUrl = '';
+    let currentDetectedType = 'reel';
 
     function fillUrl(type) {
       document.getElementById('mediaUrl').value = sampleUrls[type] || sampleUrls.reel;
@@ -411,21 +900,38 @@
       return headers;
     }
 
+    function handleAvatarError(img) {
+      img.style.display = 'none';
+      const fallback = document.getElementById('creatorAvatarFallback');
+      if (fallback) fallback.style.display = 'flex';
+    }
+
     async function loadQuota() {
       try {
-        const res = await fetch('/api/media/quota');
+        const res = await fetch('/api/quota?json=1', { headers: { 'Accept': 'application/json' } });
         const data = await res.json();
         if (data.success && data.quota) {
-          const { limit, used, remaining, resetAt } = data.quota;
-          document.getElementById('quotaRemainingText').innerText = `${remaining.toLocaleString()} / ${limit.toLocaleString()} remaining`;
-          document.getElementById('quotaUsedText').innerText = `Used: ${used.toLocaleString()}`;
-          const pct = Math.min(100, Math.round((used / limit) * 100));
+          const { limit, used, remaining, percentageUsed, month, resetAt } = data.quota;
+
+          document.getElementById('quotaUsedVal').innerText = used.toLocaleString();
+          document.getElementById('quotaRemainingVal').innerText = remaining.toLocaleString();
+          document.getElementById('quotaMonthVal').innerText = month || 'Current';
+
+          const pct = Math.min(100, percentageUsed || 0);
           document.getElementById('quotaProgressFill').style.width = `${pct}%`;
-          const resetDate = new Date(resetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-          document.getElementById('quotaResetText').innerText = `Resets: ${resetDate}`;
+          document.getElementById('quotaProgressText').innerText = `${used.toLocaleString()} / ${limit.toLocaleString()} used (${pct}%)`;
+
+          if (resetAt) {
+            const resetDate = new Date(resetAt).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            });
+            document.getElementById('quotaResetText').innerText = `Resets: ${resetDate}`;
+          }
         }
       } catch (err) {
-        console.warn('Could not load quota', err);
+        console.warn('Could not refresh quota status', err);
       }
     }
 
@@ -447,8 +953,14 @@
       const btn = document.getElementById('analyzeBtn');
       const url = document.getElementById('mediaUrl').value.trim();
 
+      if (!url) {
+        showError('INVALID_URL', 'Please enter a valid public Instagram URL.');
+        return;
+      }
+
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>Analyzing...';
+      btn.innerHTML = '<span class="spinner"></span>Analyzing link...';
+      document.getElementById('downloadSuccessBox').style.display = 'none';
 
       try {
         const res = await fetch('/api/media/analyze', {
@@ -463,31 +975,81 @@
           return;
         }
 
-        document.getElementById('mediaTypeBadge').innerText = (data.type || 'MEDIA').toUpperCase();
-        document.getElementById('detectedCodeText').innerText = `ID: ${data.url.split('/').filter(Boolean).pop()}`;
-        document.getElementById('resultTitle').innerText = data.title || 'Instagram Media';
-        document.getElementById('resultThumbnail').src = data.thumbnail || '';
-        document.getElementById('resultThumbnail').style.display = 'block';
-        document.getElementById('resultVideo').style.display = 'none';
-        document.getElementById('downloadContainer').style.display = 'none';
+        currentAnalyzedUrl = url;
+        currentDetectedType = (data.type || 'reel').toLowerCase();
+
+        // 1. Content Type Badge
+        const badge = document.getElementById('mediaTypeBadge');
+        badge.innerText = currentDetectedType.toUpperCase();
+        badge.className = `badge-tag badge-${currentDetectedType}`;
+
+        // 2. Creator Name and Profile Picture Display
+        const creatorName = data.creator || (data.creatorName ? `@${data.creatorName.replace(/^@/, '')}` : '@instagram_creator');
+        document.getElementById('creatorNameText').innerText = creatorName;
+
+        const avatarImg = document.getElementById('creatorAvatarImg');
+        const fallback = document.getElementById('creatorAvatarFallback');
+        const initial = creatorName.replace(/^@/, '')[0] || 'I';
+        fallback.innerText = initial.toUpperCase();
+
+        if (data.creatorProfilePic) {
+          avatarImg.src = data.creatorProfilePic;
+          avatarImg.style.display = 'block';
+          fallback.style.display = 'none';
+        } else {
+          avatarImg.style.display = 'none';
+          fallback.style.display = 'flex';
+        }
+
+        // 3. Audio Presence
+        const audioBadge = document.getElementById('audioStatusBadge');
+        const audioStatusText = document.getElementById('audioStatusText');
+        const audioIcon = document.getElementById('audioIcon');
+        if (data.hasAudio) {
+          audioStatusText.innerText = 'Original Audio Included';
+          audioIcon.innerText = '🎵';
+          audioBadge.style.display = 'inline-flex';
+        } else {
+          audioStatusText.innerText = 'Source Has No Audio';
+          audioIcon.innerText = '🔇';
+          audioBadge.style.display = 'inline-flex';
+        }
+
+        // 4. Dynamic Download Button Text directly under the creator profile
+        const dynamicBtn = document.getElementById('dynamicDownloadBtn');
+        if (currentDetectedType === 'reel') {
+          dynamicBtn.innerText = 'Download Reel (Original Quality + Audio)';
+        } else if (currentDetectedType === 'post') {
+          dynamicBtn.innerText = 'Download Post (Original Quality + Audio)';
+        } else if (currentDetectedType === 'story') {
+          dynamicBtn.innerText = 'Download Story (Original Quality + Audio)';
+        } else {
+          dynamicBtn.innerText = 'Download Media (Original Quality + Audio)';
+        }
+
         document.getElementById('resultCard').style.display = 'block';
         document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } catch (err) {
         showError('NETWORK_ERROR', 'Failed to connect to API server.');
       } finally {
         btn.disabled = false;
-        btn.innerText = 'Analyze Media';
-        loadQuota();
+        btn.innerText = 'Analyze Link';
       }
     }
 
     async function runDownload() {
       clearError();
-      const btn = document.getElementById('downloadBtn');
-      const url = document.getElementById('mediaUrl').value.trim();
+      const btn = document.getElementById('dynamicDownloadBtn');
+      const url = currentAnalyzedUrl || document.getElementById('mediaUrl').value.trim();
+
+      if (!url) {
+        showError('INVALID_URL', 'Please analyze a valid Instagram URL first.');
+        return;
+      }
 
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner"></span>Processing Download...';
+      const originalText = btn.innerText;
+      btn.innerHTML = '<span class="spinner"></span>Processing Original Quality Download...';
 
       try {
         const res = await fetch('/api/media/download', {
@@ -502,30 +1064,23 @@
           return;
         }
 
-        document.getElementById('mediaTypeBadge').innerText = (data.type || 'MEDIA').toUpperCase();
-        document.getElementById('detectedCodeText').innerText = `ID: ${data.downloadUrl ? 'Ready' : ''}`;
-        document.getElementById('resultTitle').innerText = `Ready for Download (${(data.type || '').toUpperCase()})`;
-        
-        // Show video player if video
-        const videoEl = document.getElementById('resultVideo');
-        videoEl.src = data.downloadUrl;
-        videoEl.style.display = 'block';
-        document.getElementById('resultThumbnail').style.display = 'none';
-
+        // Display download result
+        document.getElementById('downloadFilenameText').innerText = `File: ${data.filename || 'instagram_media.mp4'}`;
         document.getElementById('downloadHref').href = data.downloadUrl;
-        document.getElementById('downloadContainer').style.display = 'block';
         if (data.expiresAt) {
-          const exp = new Date(data.expiresAt).toLocaleTimeString();
-          document.getElementById('expiryNote').innerText = `Authorized link expires at ${exp}`;
+          const expTime = new Date(data.expiresAt).toLocaleTimeString();
+          document.getElementById('expiryNote').innerText = `Direct download link authorized until ${expTime}`;
         }
-        document.getElementById('resultCard').style.display = 'block';
-        document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        document.getElementById('downloadSuccessBox').style.display = 'block';
+
+        // REAL-TIME QUOTA UPDATE: Refresh the quota card immediately!
+        await loadQuota();
       } catch (err) {
         showError('NETWORK_ERROR', 'Failed to connect to API server.');
       } finally {
         btn.disabled = false;
-        btn.innerText = 'Download Media';
-        loadQuota();
+        btn.innerText = originalText;
       }
     }
 

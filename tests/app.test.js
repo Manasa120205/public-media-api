@@ -37,12 +37,13 @@ describe('PublicMedia API Test Suite', () => {
   // 2. GET /api/health
   // ==========================================================================
   describe('2. GET /api/health (Health Endpoint)', () => {
-    it('should return healthy status, uptime, and timestamp', async () => {
+    it('should return healthy status, uptime, version, and timestamp', async () => {
       const res = await request(app).get('/api/health');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.status).toBe('healthy');
+      expect(res.body.version).toBe('1.0.0');
       expect(typeof res.body.uptime).toBe('number');
       expect(typeof res.body.timestamp).toBe('string');
       expect(new Date(res.body.timestamp).getTime()).not.toBeNaN();
@@ -66,7 +67,8 @@ describe('PublicMedia API Test Suite', () => {
       expect(res.body.type).toBe('reel');
       expect(res.body.url).toBe(validReelUrl);
       expect(res.body.title).toContain('Reel');
-      expect(res.body.thumbnail).toBeDefined();
+      expect(res.body.creator).toBeDefined();
+      expect(res.body.hasAudio).toBe(true);
       expect(res.body.available).toBe(true);
     });
 
@@ -80,6 +82,9 @@ describe('PublicMedia API Test Suite', () => {
       expect(res.body.requestId).toBeDefined();
       expect(res.body.platform).toBe('instagram');
       expect(res.body.type).toBe('reel');
+      expect(res.body.creator).toBeDefined();
+      expect(res.body.hasAudio).toBe(true);
+      expect(res.body.filename).toContain('instagram_reel_');
       expect(res.body.downloadUrl).toBeDefined();
       expect(res.body.expiresAt).toBeDefined();
       expect(res.body.quota).toBeDefined();
@@ -367,20 +372,22 @@ describe('PublicMedia API Test Suite', () => {
 
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toContain('text/html');
-      expect(res.text).toContain('PublicMedia API Console');
+      expect(res.text).toContain('PublicMedia API');
     });
   });
 
+  // ==========================================================================
   // ==========================================================================
   // 14. Multi-Key & Subscription Plans
   // ==========================================================================
   describe('14. Multi-Key & Subscription Plans', () => {
     const planService = require('../src/services/plan.service');
 
-    it('should correctly resolve plan limits for Free, Basic, Pro, and Premium', () => {
-      expect(planService.getPlanLimit('free')).toBe(50);
+    it('should correctly resolve plan limits for Free, Basic, Pro, and Business', () => {
+      expect(planService.getPlanLimit('free')).toBe(100);
       expect(planService.getPlanLimit('basic')).toBe(1000);
       expect(planService.getPlanLimit('pro')).toBe(5000);
+      expect(planService.getPlanLimit('business')).toBe(25000);
       expect(planService.getPlanLimit('premium')).toBe(25000);
     });
 
@@ -394,6 +401,52 @@ describe('PublicMedia API Test Suite', () => {
       const info = planService.getKeyInfo(newKey.key);
       expect(info).toBeDefined();
       expect(info.plan).toBe('basic');
+    });
+  });
+
+  // ==========================================================================
+  // 15. GET /api/quota
+  // ==========================================================================
+  describe('15. GET /api/quota (Standard Quota Endpoint)', () => {
+    it('should return 200 with standard persistent quota information', async () => {
+      const res = await request(app).get('/api/quota').set('Accept', 'application/json');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.quota).toBeDefined();
+      expect(res.body.quota.limit).toBe(5000);
+      expect(typeof res.body.quota.used).toBe('number');
+      expect(typeof res.body.quota.remaining).toBe('number');
+      expect(typeof res.body.quota.percentageUsed).toBe('number');
+      expect(typeof res.body.quota.month).toBe('string');
+      expect(res.body.quota.month).toMatch(/^\d{4}-\d{2}$/);
+      expect(res.body.quota.resetAt).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // 16. GET /docs & OpenAPI Specification
+  // ==========================================================================
+  describe('16. OpenAPI Documentation (/docs)', () => {
+    it('GET /docs should return interactive Swagger UI documentation', async () => {
+      const res = await request(app).get('/docs');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/html');
+      expect(res.text).toContain('SwaggerUIBundle');
+      expect(res.text).toContain('/api/docs/openapi.json');
+    });
+
+    it('GET /api/docs/openapi.json should return valid OpenAPI 3.0 specification', async () => {
+      const res = await request(app).get('/api/docs/openapi.json');
+
+      expect(res.status).toBe(200);
+      expect(res.body.openapi).toBe('3.0.3');
+      expect(res.body.info.title).toBe('PublicMedia API');
+      expect(res.body.paths['/api/media/analyze']).toBeDefined();
+      expect(res.body.paths['/api/media/download']).toBeDefined();
+      expect(res.body.paths['/api/quota']).toBeDefined();
+      expect(res.body.paths['/api/health']).toBeDefined();
     });
   });
 });

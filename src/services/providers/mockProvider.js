@@ -46,6 +46,9 @@ class MockProvider extends BaseProvider {
       url: cleanUrl,
       title: `Instagram ${type.charAt(0).toUpperCase() + type.slice(1)} [${shortcode || 'story'}]`,
       thumbnail: mockThumbnails[type] || mockThumbnails.reel,
+      author: '@instagram_creator',
+      creator: '@instagram_creator',
+      hasAudio: type !== 'post',
       available: true
     };
   }
@@ -81,6 +84,9 @@ class MockProvider extends BaseProvider {
       success: true,
       platform: 'instagram',
       type: type || 'reel',
+      author: '@instagram_creator',
+      creator: '@instagram_creator',
+      hasAudio: type !== 'post',
       downloadUrl: sampleMediaUrls[type] || sampleMediaUrls.reel,
       expiresAt
     };

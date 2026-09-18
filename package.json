@@ -19,6 +19,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@jerrycoder/instagram-api": "^2.5.9",
     "ab-downloader": "^2.0.0",
     "btch-downloader": "^6.4.0",

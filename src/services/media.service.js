@@ -2,13 +2,14 @@ const { validateAndParseInstagramUrl } = require('../utils/urlValidator');
 const mediaProvider = require('./mediaProvider');
 const quotaService = require('./quota.service');
 const logger = require('../utils/logger');
+const { createError } = require('../utils/errors');
 
 const mediaCache = new Map();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 class MediaService {
   /**
-   * Analyzes an Instagram URL to extract type and public metadata
+   * Analyzes an Instagram URL to extract type and public metadata (metadata only, no video downloading)
    */
   async analyze(url, requestId) {
     // 1. Validate and parse URL (checks domain, SSRF, path structure, shortcode)
@@ -36,6 +37,12 @@ class MediaService {
       const result = await mediaProvider.analyzeMedia(urlMeta);
 
       const finalType = urlMeta.type || result.type || 'reel';
+      const rawCreator = result.creator || result.author || urlMeta.username || null;
+      const creator = rawCreator ? `@${rawCreator.replace(/^@/, '')}` : 'Creator information unavailable';
+      const creatorName = result.creatorName || (rawCreator ? `@${rawCreator.replace(/^@/, '')}` : 'Instagram Creator');
+      const creatorProfilePic = result.creatorProfilePic || result.profilePic || null;
+      const hasAudio = result.hasAudio !== undefined ? Boolean(result.hasAudio) : (finalType !== 'post');
+
       const finalTitle =
         result.title ||
         (finalType === 'post'
@@ -46,13 +53,16 @@ class MediaService {
 
       const response = {
         success: true,
-        platform: result.platform || urlMeta.platform,
+        platform: result.platform || urlMeta.platform || 'instagram',
         type: finalType,
+        creator,
+        creatorName,
+        creatorProfilePic,
+        hasAudio,
         url: result.url || urlMeta.cleanUrl,
         title: finalTitle,
-        thumbnail: result.thumbnail,
-        videoUrl: result.videoUrl || null,
-        available: result.available
+        thumbnail: result.thumbnail || null,
+        available: result.available !== false
       };
 
       mediaCache.set(urlMeta.cleanUrl, { data: response, timestamp: Date.now() });
@@ -62,16 +72,23 @@ class MediaService {
         throw providerErr;
       }
 
-      logger.warn('Media provider failed, generating graceful fallback metadata', {
+      logger.warn('Media provider failed during analyze, generating fallback metadata', {
         requestId,
         error: providerErr.message
       });
 
       const finalType = urlMeta.type || 'reel';
+      const rawCreator = urlMeta.username || null;
+      const creator = rawCreator ? `@${rawCreator.replace(/^@/, '')}` : 'Creator information unavailable';
+
       const fallback = {
         success: true,
-        platform: urlMeta.platform,
+        platform: urlMeta.platform || 'instagram',
         type: finalType,
+        creator,
+        creatorName: rawCreator ? `@${rawCreator.replace(/^@/, '')}` : 'Instagram Creator',
+        creatorProfilePic: null,
+        hasAudio: finalType !== 'post',
         url: urlMeta.cleanUrl,
         title:
           finalType === 'post'
@@ -80,7 +97,6 @@ class MediaService {
             ? 'Instagram Story'
             : 'Instagram Reel',
         thumbnail: null,
-        videoUrl: null,
         available: true
       };
 
@@ -90,7 +106,7 @@ class MediaService {
   }
 
   /**
-   * Processes a public media download request, enforcing quota
+   * Processes a public media download request, strictly enforcing quota on success only
    */
   async download(url, requestId, quality) {
     // 1. Validate and parse URL
@@ -126,29 +142,36 @@ class MediaService {
       // 4. Delegate download processing to active media provider
       const result = await mediaProvider.downloadMedia(urlMeta);
 
-      // 5. On success, record quota usage
+      // 5. Quota Decrement Rule: ONLY successful downloadable media generation consumes 1 download
       const quotaStatus = quotaService.recordSuccess();
 
       const isAudio = quality === 'audio';
-      const isVideo = !isAudio && urlMeta.type !== 'post' && urlMeta.type !== 'photo';
+      const finalType = isAudio ? 'audio' : (urlMeta.type || result.type || 'reel');
+      const isVideo = !isAudio && finalType !== 'post';
       const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
+
+      const rawCreator = result.creator || result.author || urlMeta.username || null;
+      const creator = rawCreator ? `@${rawCreator.replace(/^@/, '')}` : 'Creator information unavailable';
+      const safeUsername = rawCreator ? rawCreator.replace(/^@/, '').replace(/[^a-zA-Z0-9_.]/g, '') : 'download';
+      const filename = result.filename || `instagram_${finalType}_${safeUsername}.${ext}`;
+      const hasAudio = result.hasAudio !== undefined ? Boolean(result.hasAudio) : (isAudio || finalType !== 'post');
 
       const response = {
         success: true,
         requestId,
-        platform: result.platform || urlMeta.platform,
-        type: isAudio ? 'audio' : (urlMeta.type || result.type || 'reel'),
+        platform: result.platform || urlMeta.platform || 'instagram',
+        type: finalType,
+        creator,
+        hasAudio,
         downloadUrl: result.downloadUrl,
-        filename:
-          result.filename ||
-          (isAudio
-            ? `stealreel_${urlMeta.shortcode || 'media'}_audio.mp3`
-            : `stealreel_${urlMeta.shortcode || (urlMeta.type || 'media')}.${ext}`),
-        expiresAt: result.expiresAt,
+        filename,
+        expiresAt: result.expiresAt || new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
         quota: {
           limit: quotaStatus.limit,
           used: quotaStatus.used,
           remaining: quotaStatus.remaining,
+          percentageUsed: quotaStatus.percentageUsed,
+          month: quotaStatus.month,
           resetAt: quotaStatus.resetAt
         }
       };
@@ -156,39 +179,19 @@ class MediaService {
       mediaCache.set(downloadCacheKey, { data: response, timestamp: Date.now() });
       return response;
     } catch (err) {
-      if (err.code === 'PROVIDER_ERROR' || urlMeta.shortcode === 'fail_provider_test') {
-        throw err;
-      }
+      // Record failure: does NOT consume monthly download quota
+      quotaService.recordFailure();
 
-      logger.warn('Download extraction failed, falling back to direct stream route', {
+      logger.warn('Download processing failed', {
         requestId,
         error: err.message
       });
 
-      const isAudio = quality === 'audio';
-      const isVideo = !isAudio && urlMeta.type !== 'post' && urlMeta.type !== 'photo';
-      const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
-      const fallbackFilename = `stealreel_${urlMeta.shortcode || (urlMeta.type || 'media')}${isAudio ? '_audio' : ''}.${ext}`;
-      const quotaStatus = quotaService.recordSuccess();
+      if (err.isAppError || err.code) {
+        throw err;
+      }
 
-      const fallbackResponse = {
-        success: true,
-        requestId,
-        platform: urlMeta.platform,
-        type: isAudio ? 'audio' : (urlMeta.type || 'reel'),
-        downloadUrl: `/api/media/stream/${fallbackFilename}`,
-        filename: fallbackFilename,
-        expiresAt: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
-        quota: {
-          limit: quotaStatus.limit,
-          used: quotaStatus.used,
-          remaining: quotaStatus.remaining,
-          resetAt: quotaStatus.resetAt
-        }
-      };
-
-      mediaCache.set(downloadCacheKey, { data: fallbackResponse, timestamp: Date.now() });
-      return fallbackResponse;
+      throw createError('PROVIDER_ERROR', err.message || 'Failed to download public media.');
     }
   }
 }

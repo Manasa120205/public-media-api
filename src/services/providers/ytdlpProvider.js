@@ -7,6 +7,26 @@ const config = require('../../config/env');
 const { createError } = require('../../utils/errors');
 const logger = require('../../utils/logger');
 
+let resolvedFfmpegPath = 'ffmpeg';
+let resolvedFfprobePath = 'ffprobe';
+try {
+  const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+  if (ffmpegInstaller && ffmpegInstaller.path && fs.existsSync(ffmpegInstaller.path)) {
+    resolvedFfmpegPath = ffmpegInstaller.path;
+  }
+} catch {
+  resolvedFfmpegPath = 'ffmpeg';
+}
+
+try {
+  const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
+  if (ffprobeInstaller && ffprobeInstaller.path && fs.existsSync(ffprobeInstaller.path)) {
+    resolvedFfprobePath = ffprobeInstaller.path;
+  }
+} catch {
+  resolvedFfprobePath = 'ffprobe';
+}
+
 /**
  * High-Performance Open-Source Live Media Extractor Provider
  * 
@@ -29,6 +49,8 @@ class YtDlpProvider extends BaseProvider {
   constructor() {
     super('live');
     this.timeoutMs = 15000;
+    this.ffmpegPath = resolvedFfmpegPath;
+    this.ffmpegDir = path.dirname(resolvedFfmpegPath);
     this.rapidApiKey = config.rapidApiKey || process.env.RAPIDAPI_KEY || '3e816048ffmshd860f2873aa16f2p127184jsnfb7a9ceab949';
     this.rapidApiHost = config.rapidApiHost || process.env.RAPIDAPI_HOST || 'instagram-downloader-v2-scraper-reels-igtv-posts-stories.p.rapidapi.com';
   }
@@ -51,6 +73,8 @@ class YtDlpProvider extends BaseProvider {
         'best[acodec!=none]/b[acodec!=none]/best',
         '--format-sort',
         '+acodec,res,tbr',
+        '--ffmpeg-location',
+        this.ffmpegDir,
         '--extractor-args',
         'instagram:app_id=936619743392459',
         '--add-header',
@@ -243,12 +267,12 @@ class YtDlpProvider extends BaseProvider {
       return verifiedAudioFormats[0].url;
     }
 
-    // 4. TERTIARY: Check item.url if it is a video URL
+    // 4. TERTIARY: Check item.url if it is a video URL WITH AUDIO
     if (
       item.url &&
       typeof item.url === 'string' &&
       item.url.startsWith('http') &&
-      (!item.acodec || item.acodec !== 'none')
+      (!isVideoItem || (item.acodec && item.acodec !== 'none'))
     ) {
       return item.url;
     }
@@ -270,17 +294,17 @@ class YtDlpProvider extends BaseProvider {
         const lastThumb = item.thumbnails[item.thumbnails.length - 1];
         if (lastThumb?.url) return lastThumb.url;
       }
+      if (item.url && typeof item.url === 'string' && item.url.startsWith('http')) {
+        return item.url;
+      }
     }
 
-    if (item.url && typeof item.url === 'string' && item.url.startsWith('http')) {
-      return item.url;
-    }
-
+    // If it is a video and no stream with audio was found, return null so server-side FFmpeg muxing can merge DASH streams
     return null;
   }
 
   /**
-   * Direct download of full media file to tempStorageDir using yt-dlp
+   * Direct download of full media file to tempStorageDir using yt-dlp with audio
    */
   async downloadToFile(targetUrl, outputFilename) {
     return new Promise((resolve) => {
@@ -299,14 +323,20 @@ class YtDlpProvider extends BaseProvider {
         'yt_dlp',
         '--no-warnings',
         '--no-check-certificates',
+        '--ffmpeg-location',
+        this.ffmpegDir,
+        '-f',
+        'bestvideo+bestaudio/best[acodec!=none]/best',
+        '--merge-output-format',
+        'mp4',
         '-o',
         outputPath,
         targetUrl
       ];
 
-      execFile('python', args, { timeout: 25000 }, (err) => {
+      execFile('python', args, { timeout: 35000 }, (err) => {
         if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
-          logger.info('Direct video saved to tempStorageDir', { file: outputFilename });
+          logger.info('Direct video with audio saved to tempStorageDir', { file: outputFilename });
           resolve(`/api/media/stream/${outputFilename}`);
         } else {
           logger.warn('Direct video download notice', { error: err?.message });
@@ -328,7 +358,7 @@ class YtDlpProvider extends BaseProvider {
 
       const safeShortcode = (shortcode || '').replace(/[^a-zA-Z0-9_-]/g, '') || String(Date.now());
       const ext = isAudio ? 'mp3' : 'mp4';
-      const outputFilename = `stealreel_${safeShortcode}_${isAudio ? 'audio' : 'muxed'}.${ext}`;
+      const outputFilename = `instagram_${safeShortcode}_${isAudio ? 'audio' : 'muxed'}.${ext}`;
       const outputPath = path.join(tempDir, outputFilename);
 
       // If already muxed in temp cache, return it immediately
@@ -345,6 +375,8 @@ class YtDlpProvider extends BaseProvider {
         'yt_dlp',
         '--no-warnings',
         '--no-check-certificates',
+        '--ffmpeg-location',
+        this.ffmpegDir,
         '-f',
         formatArg,
         '--extractor-args',
@@ -395,7 +427,7 @@ class YtDlpProvider extends BaseProvider {
       }
 
       const safeShortcode = (shortcode || '').replace(/[^a-zA-Z0-9_-]/g, '') || String(Date.now());
-      const outputFilename = `stealreel_${safeShortcode}_audio.mp3`;
+      const outputFilename = `instagram_${safeShortcode}_audio.mp3`;
       const outputPath = path.join(tempDir, outputFilename);
 
       if (fs.existsSync(outputPath)) {
@@ -418,7 +450,7 @@ class YtDlpProvider extends BaseProvider {
         outputPath
       ];
 
-      execFile('ffmpeg', ffmpegArgs, { timeout: 35000 }, (err) => {
+      execFile(this.ffmpegPath, ffmpegArgs, { timeout: 35000 }, (err) => {
         if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
           logger.info('Extracted pure MP3 audio via ffmpeg', { file: outputFilename });
           return resolve(`/api/media/stream/${outputFilename}`);
@@ -430,6 +462,8 @@ class YtDlpProvider extends BaseProvider {
           'yt_dlp',
           '--no-warnings',
           '--no-check-certificates',
+          '--ffmpeg-location',
+          this.ffmpegDir,
           '-f',
           'bestaudio/best',
           '-x',
@@ -464,7 +498,46 @@ class YtDlpProvider extends BaseProvider {
    * Analyzes public media and extracts live metadata and CDN thumbnails
    */
   async analyzeMedia(urlMeta) {
-    // 1. FAST PATH: Query RapidAPI first for sub-second (<300ms) metadata & thumbnail retrieval
+    // 0. ULTRA-FAST DIRECT EXTRACTOR: Query multi-source direct scraper (btch-downloader) in ~1.5 - 2.5s
+    try {
+      const btch = require('btch-downloader');
+      const bRes = await Promise.race([
+        btch.igdl(urlMeta.cleanUrl),
+        new Promise((_, r) => setTimeout(() => r(new Error('btch timeout')), 3800))
+      ]);
+      if (bRes && bRes.status && Array.isArray(bRes.result) && bRes.result.length > 0) {
+        const item = bRes.result.find((i) => i && (i.url || i.thumbnail)) || bRes.result[0];
+        if (item && (item.url || item.thumbnail)) {
+          const finalType = urlMeta.type || (item.url ? 'reel' : 'post');
+          const defaultTitle =
+            finalType === 'post'
+              ? 'Instagram Post'
+              : finalType === 'story'
+              ? 'Instagram Story'
+              : 'Instagram Reel';
+
+          logger.info('Extracted media metadata via btch-downloader fast path (<2.5s)', {
+            shortcode: urlMeta.shortcode,
+            hasVideo: Boolean(item.url)
+          });
+
+          return {
+            success: true,
+            platform: 'instagram',
+            type: finalType,
+            url: urlMeta.cleanUrl,
+            title: defaultTitle,
+            thumbnail: item.thumbnail || null,
+            videoUrl: finalType !== 'post' ? (item.url || null) : null,
+            available: true
+          };
+        }
+      }
+    } catch (btchErr) {
+      logger.info('btch extractor notice, continuing to next tier', { error: btchErr?.message });
+    }
+
+    // 1. FAST PATH: Query RapidAPI for metadata & thumbnail retrieval
     const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
     if (rapidData) {
       const mediaList = Array.isArray(rapidData.media)
@@ -489,6 +562,11 @@ class YtDlpProvider extends BaseProvider {
           : 'Instagram Reel';
 
       if (thumb || first.video_url || first.url) {
+        const owner = rapidData.owner || first.owner || rapidData.user || {};
+        const author = owner.username || rapidData.author || first.author || null;
+        const profilePic = owner.profile_pic_url || owner.profile_pic_url_hd || owner.avatar || null;
+        const creatorName = owner.full_name || owner.name || (author ? `@${author}` : null);
+
         return {
           success: true,
           platform: 'instagram',
@@ -497,7 +575,10 @@ class YtDlpProvider extends BaseProvider {
           title: first.caption || rapidData.caption || defaultTitle,
           thumbnail: thumb,
           videoUrl: isVideo ? videoUrl : null,
-          author: rapidData.owner?.username || first.owner?.username || null,
+          author,
+          creator: author ? `@${author.replace(/^@/, '')}` : null,
+          creatorName,
+          creatorProfilePic: profilePic,
           available: true
         };
       }
@@ -529,15 +610,9 @@ class YtDlpProvider extends BaseProvider {
         (raw.thumbnails && raw.thumbnails[raw.thumbnails.length - 1]?.url) ||
         (raw.thumbnails && raw.thumbnails[0]?.url) ||
         null;
-      let videoUrl = this.extractStreamUrl(raw, 'original');
-
-      // Pre-fetch in background to temp storage for reliable offline/attachment fallback without blocking response
-      if (finalType !== 'post') {
-        const filename = `stealreel_${urlMeta.shortcode || 'media'}.mp4`;
-        this.downloadToFile(urlMeta.cleanUrl, filename).catch((err) => {
-          logger.warn('Background download to file notice', { error: err?.message });
-        });
-      }
+      const creator = raw.uploader || raw.uploader_id || null;
+      const creatorName = raw.uploader || raw.channel || (creator ? `@${creator}` : null);
+      const profilePic = (raw.thumbnails && raw.thumbnails.find(t => t.id === 'avatar' || (t.id && t.id.includes('avatar'))))?.url || null;
 
       return {
         success: true,
@@ -546,8 +621,11 @@ class YtDlpProvider extends BaseProvider {
         url: urlMeta.cleanUrl,
         title,
         thumbnail,
-        videoUrl: finalType !== 'post' ? videoUrl : null,
-        author: raw.uploader || raw.uploader_id || null,
+        author: creator,
+        creator: creator ? `@${creator.replace(/^@/, '')}` : null,
+        creatorName,
+        creatorProfilePic: profilePic,
+        hasAudio: finalType !== 'post',
         available: true
       };
     }
@@ -563,8 +641,25 @@ class YtDlpProvider extends BaseProvider {
     let directUrl = null;
     const isAudio = (urlMeta.quality || '').toLowerCase() === 'audio';
 
-    // TIER 1: FAST PATH - Query RapidAPI first for sub-second (<300ms) download stream retrieval
-    const rapidData = await this.fetchRapidApi(urlMeta.cleanUrl);
+    // TIER 0: FAST PATH - Query multi-source direct scraper (btch-downloader) in ~1.5 - 2.5s
+    try {
+      const btch = require('btch-downloader');
+      const bRes = await Promise.race([
+        btch.igdl(urlMeta.cleanUrl),
+        new Promise((_, r) => setTimeout(() => r(new Error('btch timeout')), 3800))
+      ]);
+      if (bRes && bRes.status && Array.isArray(bRes.result) && bRes.result.length > 0) {
+        const item = bRes.result.find((i) => i && i.url) || bRes.result[0];
+        if (item && item.url) {
+          directUrl = item.url;
+        }
+      }
+    } catch (btchErr) {
+      logger.info('btch download extractor notice, continuing to next tier', { error: btchErr?.message });
+    }
+
+    // TIER 1: FAST PATH - Query RapidAPI first for download stream retrieval
+    const rapidData = !directUrl ? await this.fetchRapidApi(urlMeta.cleanUrl) : null;
     if (rapidData) {
       const mediaList = Array.isArray(rapidData.media)
         ? rapidData.media
@@ -624,9 +719,13 @@ class YtDlpProvider extends BaseProvider {
       directUrl = await this.muxDASHStreams(urlMeta.cleanUrl, urlMeta.shortcode, isAudio);
     }
 
-    const isVideo = !isAudio && urlMeta.type !== 'photo' && urlMeta.type !== 'image' && urlMeta.type !== 'post';
+    const finalType = isAudio ? 'audio' : (urlMeta.type || 'reel');
+    const isVideo = !isAudio && finalType !== 'post';
     const ext = isAudio ? 'mp3' : isVideo ? 'mp4' : 'jpg';
-    const filename = `stealreel_${urlMeta.shortcode || (urlMeta.type || 'media')}${isAudio ? '_audio' : ''}.${ext}`;
+
+    const rawCreator = (rapidData?.owner?.username || raw?.uploader || raw?.uploader_id || urlMeta.username || '').replace(/^@/, '').trim();
+    const safeUsername = rawCreator ? rawCreator.replace(/[^a-zA-Z0-9_.]/g, '') : 'download';
+    const filename = `instagram_${finalType}_${safeUsername}${isAudio ? '_audio' : ''}.${ext}`;
 
     if (!directUrl || directUrl.startsWith('/api/media/stream/')) {
       const savedStream = await this.downloadToFile(urlMeta.cleanUrl, filename);
@@ -643,7 +742,9 @@ class YtDlpProvider extends BaseProvider {
     return {
       success: true,
       platform: 'instagram',
-      type: isAudio ? 'audio' : (urlMeta.type || 'reel'),
+      type: finalType,
+      creator: rawCreator ? `@${rawCreator}` : null,
+      hasAudio: isAudio || finalType !== 'post',
       downloadUrl: directUrl,
       filename,
       expiresAt

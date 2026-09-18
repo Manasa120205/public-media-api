@@ -79,7 +79,10 @@ const logger = {
         method: req.method,
         endpoint: req.originalUrl || req.url,
         statusCode: res.statusCode,
+        processingTimeMs: durationMs,
         responseTimeMs: durationMs,
+        providerTimeMs: req.providerTimeMs || undefined,
+        mediaProcessingTimeMs: req.mediaProcessingTimeMs || undefined,
         ip: req.ip || req.connection.remoteAddress,
         mediaType: req.detectedMediaType || undefined,
         errorCode: res.errorCode || undefined

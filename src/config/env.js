@@ -46,6 +46,11 @@ const config = {
   // Storage
   tempStorageDir: path.resolve(process.cwd(), process.env.TEMP_STORAGE_DIR || './temp'),
   dataStorageDir: path.resolve(process.cwd(), process.env.DATA_STORAGE_DIR || './data'),
+  quotaFilePath: process.env.QUOTA_FILE_PATH || path.resolve(
+    process.cwd(),
+    process.env.DATA_STORAGE_DIR || './data',
+    process.env.NODE_ENV === 'test' ? 'quota.test.json' : 'quota.json'
+  ),
   storageCleanupIntervalMs: parseInt(process.env.STORAGE_CLEANUP_INTERVAL_MS || '300000', 10),
   storageFileMaxAgeMs: parseInt(process.env.STORAGE_FILE_MAX_AGE_MS || '600000', 10)
 };

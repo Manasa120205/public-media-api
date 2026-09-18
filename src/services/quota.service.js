@@ -6,14 +6,14 @@ const { createError } = require('../utils/errors');
 
 class QuotaService {
   constructor() {
-    this.quotaFile = path.resolve(config.dataStorageDir, 'quota.json');
-    this.limit = config.monthlyDownloadLimit;
+    this.quotaFile = config.quotaFilePath || path.resolve(config.dataStorageDir, 'quota.json');
+    this.limit = config.monthlyDownloadLimit || 5000;
     this.enabled = config.monthlyQuotaEnabled;
-    this.state = this.loadInitialState();
+    this.state = this.readDiskState();
   }
 
   /**
-   * Calculates the current month key (e.g., "2026-09")
+   * Calculates the current UTC month key (e.g., "2026-09")
    */
   getCurrentMonthKey(date = new Date()) {
     const year = date.getUTCFullYear();
@@ -45,28 +45,29 @@ class QuotaService {
   }
 
   /**
-   * Loads state from disk or initializes fresh state if missing or corrupted
+   * Reads persistent quota state directly from disk with automatic month rollover check
    */
-  loadInitialState() {
+  readDiskState() {
     const currentMonth = this.getCurrentMonthKey();
+    const dir = path.dirname(this.quotaFile);
 
     try {
-      if (!fs.existsSync(config.dataStorageDir)) {
-        fs.mkdirSync(config.dataStorageDir, { recursive: true });
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
       }
 
       if (fs.existsSync(this.quotaFile)) {
         const raw = fs.readFileSync(this.quotaFile, 'utf8');
         const data = JSON.parse(raw);
 
-        // Check for month rollover
+        // Check if file belongs to the current calendar month
         if (data && data.month === currentMonth) {
-          // Sync with possibly updated environment limit
           data.limit = this.limit;
+          this.state = data;
           return data;
-        } else {
+        } else if (data && data.month && data.month !== currentMonth) {
           logger.info('Calendar month rolled over; resetting monthly development quota.', {
-            previousMonth: data?.month,
+            previousMonth: data.month,
             newMonth: currentMonth
           });
         }
@@ -76,66 +77,61 @@ class QuotaService {
     }
 
     const fresh = this.createFreshState(currentMonth);
+    this.state = fresh;
     this.persistState(fresh);
     return fresh;
   }
 
   /**
-   * Atomically persists quota state to data/quota.json
+   * Atomically persists quota state to disk using a temporary file
    */
   persistState(state = this.state) {
+    const dir = path.dirname(this.quotaFile);
     try {
-      if (!fs.existsSync(config.dataStorageDir)) {
-        fs.mkdirSync(config.dataStorageDir, { recursive: true });
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
       }
 
-      const tempFile = `${this.quotaFile}.tmp-${Date.now()}`;
+      const tempFile = `${this.quotaFile}.tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       fs.writeFileSync(tempFile, JSON.stringify(state, null, 2), 'utf8');
       fs.renameSync(tempFile, this.quotaFile);
     } catch (err) {
-      logger.error('Failed to persist quota file to disk', { error: err.message });
+      logger.error('Failed to persist quota file to disk', { error: err.message, file: this.quotaFile });
     }
   }
 
   /**
-   * Checks month rollover before any check or increment
-   */
-  ensureCurrentMonth() {
-    const currentMonth = this.getCurrentMonthKey();
-    if (this.state.month !== currentMonth) {
-      this.state = this.createFreshState(currentMonth);
-      this.persistState();
-    }
-  }
-
-  /**
-   * Gets current quota status summary
+   * Returns current quota status summary matching public API specifications
    */
   getQuotaStatus() {
-    this.ensureCurrentMonth();
+    this.readDiskState();
 
-    const used = this.state.used;
-    const remaining = Math.max(0, this.limit - used);
+    const used = Number(this.state.used) || 0;
+    const limit = Number(this.limit) || 5000;
+    const remaining = Math.max(0, limit - used);
+    const percentageUsed = limit > 0 ? Number(((used / limit) * 100).toFixed(2)) : 0;
 
     return {
-      limit: this.limit,
+      limit,
       used,
       remaining,
-      totalRequests: this.state.totalRequests,
-      successfulRequests: this.state.successfulRequests,
-      failedRequests: this.state.failedRequests,
-      resetAt: this.state.resetAt,
+      percentageUsed,
+      month: this.state.month || this.getCurrentMonthKey(),
+      totalRequests: this.state.totalRequests || 0,
+      successfulRequests: this.state.successfulRequests || 0,
+      failedRequests: this.state.failedRequests || 0,
+      resetAt: this.state.resetAt || this.getNextResetDate(),
       enabled: this.enabled
     };
   }
 
   /**
-   * Validates if quota is available. Throws MONTHLY_LIMIT_REACHED if exceeded.
+   * Validates if quota is available. Throws MONTHLY_LIMIT_REACHED if exhausted.
    */
   checkQuotaAvailable() {
     if (!this.enabled) return true;
 
-    this.ensureCurrentMonth();
+    this.readDiskState();
 
     if (this.state.used >= this.limit) {
       throw createError(
@@ -148,37 +144,39 @@ class QuotaService {
   }
 
   /**
-   * Records a request attempt
+   * Records a request attempt without charging download quota
    */
   recordAttempt() {
-    this.ensureCurrentMonth();
-    this.state.totalRequests += 1;
+    this.readDiskState();
+    this.state.totalRequests = (Number(this.state.totalRequests) || 0) + 1;
     this.persistState();
   }
 
   /**
-   * Increments successful download usage and updates counts
+   * Atomically increments download usage on successful download creation
    */
   recordSuccess() {
-    this.ensureCurrentMonth();
-    this.state.used += 1;
-    this.state.successfulRequests += 1;
+    this.readDiskState();
+    this.state.used = (Number(this.state.used) || 0) + 1;
+    this.state.successfulRequests = (Number(this.state.successfulRequests) || 0) + 1;
+    this.state.totalRequests = (Number(this.state.totalRequests) || 0) + 1;
     this.persistState();
     return this.getQuotaStatus();
   }
 
   /**
-   * Records a failed download attempt without charging against download usage
+   * Records a failed download attempt without charging against download quota
    */
   recordFailure() {
-    this.ensureCurrentMonth();
-    this.state.failedRequests += 1;
+    this.readDiskState();
+    this.state.failedRequests = (Number(this.state.failedRequests) || 0) + 1;
+    this.state.totalRequests = (Number(this.state.totalRequests) || 0) + 1;
     this.persistState();
     return this.getQuotaStatus();
   }
 
   /**
-   * Resets quota (useful for testing or administrative triggers)
+   * Resets quota (used for automated testing or administrative triggers)
    */
   resetQuota(newLimit = this.limit) {
     this.limit = newLimit;

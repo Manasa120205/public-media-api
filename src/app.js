@@ -21,9 +21,16 @@ app.use(
   })
 );
 
-// Serve interactive developer console UI
+// Serve interactive developer console / testing portal UI
 app.use('/demo', express.static(path.resolve(__dirname, '../public')));
 app.get('/demo', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../public/index.html'));
+});
+app.use('/portal', express.static(path.resolve(__dirname, '../public')));
+app.get('/portal', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../public/index.html'));
+});
+app.get('/console', (req, res) => {
   res.sendFile(path.resolve(__dirname, '../public/index.html'));
 });
 

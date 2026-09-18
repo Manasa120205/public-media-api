@@ -9,26 +9,33 @@ const PLANS = {
   FREE: {
     id: 'free',
     name: 'Free Tier',
-    monthlyDownloads: 50,
+    monthlyDownloads: 100,
     priceCents: 0
   },
   BASIC: {
     id: 'basic',
     name: 'Basic Plan',
     monthlyDownloads: 1000,
-    priceCents: null // Ready for Stripe / Razorpay
+    priceCents: 900 // $9.00 / month
   },
   PRO: {
     id: 'pro',
     name: 'Pro Plan',
     monthlyDownloads: 5000,
-    priceCents: null
+    priceCents: 2900 // $29.00 / month
   },
+  BUSINESS: {
+    id: 'business',
+    name: 'Business Plan',
+    monthlyDownloads: 25000,
+    priceCents: 7900 // $79.00 / month
+  },
+  // Alias for backward compatibility
   PREMIUM: {
     id: 'premium',
-    name: 'Premium Plan',
+    name: 'Business Plan',
     monthlyDownloads: 25000,
-    priceCents: null
+    priceCents: 7900
   }
 };
 
