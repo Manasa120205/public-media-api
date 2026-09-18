@@ -680,6 +680,26 @@ except Exception as e:
       }
     }
 
+    // TIER 1.5: Fast direct scraper fallback via @jerrycoder/instagram-api
+    if (!directUrl) {
+      try {
+        const { instagram } = require('@jerrycoder/instagram-api');
+        const jRes = await Promise.race([
+          instagram(urlMeta.cleanUrl),
+          new Promise((_, r) => setTimeout(() => r(new Error('instagram-api timeout')), 4000))
+        ]);
+        if (jRes && (jRes.url || (Array.isArray(jRes) && jRes[0]?.url))) {
+          const found = jRes.url || jRes[0]?.url;
+          if (found && typeof found === 'string' && found.startsWith('http')) {
+            directUrl = found;
+            logger.info('Extracted media stream via @jerrycoder/instagram-api', { url: urlMeta.cleanUrl });
+          }
+        }
+      } catch (jErr) {
+        logger.info('instagram-api tier notice', { error: jErr?.message });
+      }
+    }
+
     // TIER 2: Fast multi-format extractor fallback (works for Reels, Posts, Carousels, Stories)
     if (!directUrl) {
       try {
