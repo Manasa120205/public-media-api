@@ -124,28 +124,32 @@ function validateAndParseInstagramUrl(rawUrl) {
   if (firstSegment === 'reel' || firstSegment === 'reels') {
     type = 'reel';
     shortcode = segments[1] || null;
-  } else if (firstSegment === 'p' || firstSegment === 'tv') {
-    type = 'post';
-    shortcode = segments[1] || null;
-  } else if (firstSegment === 'stories' || firstSegment === 'story') {
-    type = 'story';
-    if (segments[1] && segments[1].toLowerCase() === 'highlights') {
-      username = 'highlights';
-      shortcode = segments[2] || null;
-    } else {
-      username = segments[1] || null;
-      shortcode = segments[2] || segments[1] || null;
-    }
+  } else if (firstSegment === 'share' && segments[1]?.toLowerCase() === 'reel') {
+    type = 'reel';
+    shortcode = segments[2] || null;
+  } else if (firstSegment === 'p' || firstSegment === 'tv' || firstSegment === 'stories' || firstSegment === 'story') {
+    throw createError(
+      'NOT_REEL',
+      "This link doesn't appear to be an Instagram Reel.",
+      400
+    );
   } else {
-    // Other routes (e.g. /username/p/shortcode or /username/reel/shortcode)
-    if (segments.length >= 3 && (segments[1].toLowerCase() === 'p' || segments[1].toLowerCase() === 'reel')) {
-      type = segments[1].toLowerCase() === 'reel' ? 'reel' : 'post';
+    // Other routes (e.g. /username/reel/shortcode)
+    if (segments.length >= 3 && segments[1].toLowerCase() === 'reel') {
+      type = 'reel';
       username = segments[0];
       shortcode = segments[2];
+    } else if (segments.length >= 3 && segments[1].toLowerCase() === 'p') {
+      throw createError(
+        'NOT_REEL',
+        "This link doesn't appear to be an Instagram Reel.",
+        400
+      );
     } else {
       throw createError(
-        'INVALID_URL',
-        'URL does not match a supported public Instagram Reel, Post, or Story format.'
+        'NOT_REEL',
+        "This link doesn't appear to be an Instagram Reel.",
+        400
       );
     }
   }

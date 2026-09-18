@@ -48,10 +48,10 @@ try {
 class YtDlpProvider extends BaseProvider {
   constructor() {
     super('live');
-    this.timeoutMs = 15000;
+    this.timeoutMs = 28000;
     this.ffmpegPath = resolvedFfmpegPath;
     this.ffmpegDir = path.dirname(resolvedFfmpegPath);
-    this.rapidApiKey = config.rapidApiKey || process.env.RAPIDAPI_KEY || '3e816048ffmshd860f2873aa16f2p127184jsnfb7a9ceab949';
+    this.rapidApiKey = config.rapidApiKey || process.env.RAPIDAPI_KEY || '';
     this.rapidApiHost = config.rapidApiHost || process.env.RAPIDAPI_HOST || 'instagram-downloader-v2-scraper-reels-igtv-posts-stories.p.rapidapi.com';
   }
 
