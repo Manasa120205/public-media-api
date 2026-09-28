@@ -184,6 +184,26 @@ except Exception as e:
   }
 
   /**
+   * Unwraps real direct Instagram CDN URL if wrapped by a third-party token proxy (e.g. saveinsta/snapcdn)
+   */
+  unwrapRealCdnUrl(candidateUrl) {
+    if (!candidateUrl || typeof candidateUrl !== 'string') return candidateUrl;
+    if (candidateUrl.includes('token=')) {
+      try {
+        const parsed = new URL(candidateUrl);
+        const token = parsed.searchParams.get('token');
+        if (token && token.includes('.')) {
+          const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString('utf8'));
+          if (payload.url && typeof payload.url === 'string' && payload.url.startsWith('http')) {
+            return payload.url;
+          }
+        }
+      } catch (_) {}
+    }
+    return candidateUrl;
+  }
+
+  /**
    * Robust stream URL extraction from yt-dlp metadata ensuring FULL AUDIO AND VIDEO
    */
   extractStreamUrl(raw, targetQuality) {
@@ -205,17 +225,33 @@ except Exception as e:
       (f) => f && f.url && typeof f.url === 'string' && f.url.startsWith('http')
     );
 
+    function isSilentDashVideo(f) {
+      if (!f) return false;
+      if (f.acodec === 'none') return true;
+      if (f.format_note && f.format_note.toLowerCase().includes('dash video')) return true;
+      if (f.format_id && String(f.format_id).toLowerCase().startsWith('dash') && String(f.format_id).toLowerCase().endsWith('v')) return true;
+      if (f.url && (f.url.includes('video_dashinit.mp4') || (f.url.includes('_dashinit.mp4') && !f.url.includes('audio_dashinit')))) return true;
+      return false;
+    }
+
+    function isAudioOnlyStream(f) {
+      if (!f) return false;
+      if (f.vcodec === 'none') return true;
+      if (f.format_note && f.format_note.toLowerCase().includes('dash audio')) return true;
+      if (f.format_id && String(f.format_id).toLowerCase().startsWith('dash') && String(f.format_id).toLowerCase().endsWith('a')) return true;
+      if (f.url && f.url.includes('audio_dashinit.mp4')) return true;
+      return false;
+    }
+
     // 2. PRIMARY: Filter strictly for formats that have BOTH video AND audio
-    // In Instagram, progressive MP4 files (from video_versions) have:
-    // - vcodec != 'none' (e.g., avc1, h264)
-    // - acodec != 'none' (e.g., mp4a, aac)
-    // DASH video-only formats have acodec == 'none' (MUST BE EXCLUDED TO PREVENT SILENT VIDEOS!)
+    // Progressive MP4 files (e.g. format 1, 2, 3 or xpv_progressive) contain both H.264 video and AAC audio
+    // DASH video-only formats have acodec == 'none' and must be rejected!
     const progressiveWithAudio = validFormats.filter((f) => {
-      const isVideo = f.vcodec && f.vcodec !== 'none';
-      const isAudio = f.acodec && f.acodec !== 'none';
+      if (isSilentDashVideo(f)) return false;
+      if (isAudioOnlyStream(f)) return false;
       const notM3u8 = !f.protocol?.includes('m3u8') && !f.url?.includes('.m3u8');
-      const notDash = !f.format_id?.toLowerCase().includes('dash') && !f.protocol?.toLowerCase().includes('dash');
-      return isVideo && isAudio && notM3u8 && notDash;
+      const notDash = !String(f.format_id || '').toLowerCase().includes('dash') && !String(f.protocol || '').toLowerCase().includes('dash');
+      return notM3u8 && notDash;
     });
 
     if (progressiveWithAudio.length > 0) {
@@ -223,7 +259,7 @@ except Exception as e:
 
       if (q === 'audio') {
         const audioStreams = validFormats.filter(
-          (f) => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
+          (f) => isAudioOnlyStream(f) || (f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none'))
         );
         if (audioStreams.length > 0) {
           audioStreams.sort((a, b) => (b.abr || 0) - (a.abr || 0) || (b.tbr || 0) - (a.tbr || 0));
@@ -257,11 +293,11 @@ except Exception as e:
 
     // 3. SECONDARY: Any valid MP4 that has verified audio track
     const verifiedAudioFormats = validFormats.filter((f) => {
-      const isVideo = f.vcodec && f.vcodec !== 'none';
+      if (isSilentDashVideo(f)) return false;
       const hasAudio = (f.acodec && f.acodec !== 'none') || (f.audio_ext && f.audio_ext !== 'none');
       const notM3u8 = !f.protocol?.includes('m3u8') && !f.url?.includes('.m3u8');
-      const notDash = !f.format_id?.toLowerCase().includes('dash') && !f.protocol?.toLowerCase().includes('dash');
-      return isVideo && hasAudio && notM3u8 && notDash;
+      const notDash = !String(f.format_id || '').toLowerCase().includes('dash') && !String(f.protocol || '').toLowerCase().includes('dash');
+      return hasAudio && notM3u8 && notDash;
     });
 
     if (verifiedAudioFormats.length > 0) {
@@ -269,12 +305,12 @@ except Exception as e:
       return verifiedAudioFormats[0].url;
     }
 
-    // 4. TERTIARY: Check item.url if it is a video URL WITH AUDIO
+    // 4. TERTIARY: Check item.url ONLY IF it is verified NOT a silent DASH video
     if (
       item.url &&
       typeof item.url === 'string' &&
       item.url.startsWith('http') &&
-      (!isVideoItem || (item.acodec && item.acodec !== 'none'))
+      (!isVideoItem || (!isSilentDashVideo(item) && !item.url.includes('video_dashinit.mp4')))
     ) {
       return item.url;
     }
@@ -316,9 +352,12 @@ except Exception as e:
         '-m',
         'yt_dlp',
         '--no-warnings',
-        '--no-check-certificates',
-        '--ffmpeg-location',
-        this.ffmpegDir,
+        '--no-check-certificates'
+      ];
+      if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg' && fs.existsSync(this.ffmpegPath)) {
+        args.push('--ffmpeg-location', this.ffmpegDir);
+      }
+      args.push(
         '-f',
         'bestvideo+bestaudio/best[acodec!=none]/best',
         '--merge-output-format',
@@ -326,7 +365,7 @@ except Exception as e:
         '-o',
         outputPath,
         targetUrl
-      ];
+      );
 
       execFile('python', args, { timeout: 12000 }, (err) => {
         if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
@@ -368,16 +407,19 @@ except Exception as e:
         '-m',
         'yt_dlp',
         '--no-warnings',
-        '--no-check-certificates',
-        '--ffmpeg-location',
-        this.ffmpegDir,
+        '--no-check-certificates'
+      ];
+      if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg' && fs.existsSync(this.ffmpegPath)) {
+        args.push('--ffmpeg-location', this.ffmpegDir);
+      }
+      args.push(
         '-f',
         formatArg,
         '--extractor-args',
         'instagram:app_id=936619743392459',
         '--add-header',
         'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-      ];
+      );
 
       if (isAudio) {
         args.push('-x', '--audio-format', 'mp3');
@@ -455,9 +497,12 @@ except Exception as e:
           '-m',
           'yt_dlp',
           '--no-warnings',
-          '--no-check-certificates',
-          '--ffmpeg-location',
-          this.ffmpegDir,
+          '--no-check-certificates'
+        ];
+        if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg' && fs.existsSync(this.ffmpegPath)) {
+          ytdlpArgs.push('--ffmpeg-location', this.ffmpegDir);
+        }
+        ytdlpArgs.push(
           '-f',
           'bestaudio/best',
           '-x',
@@ -470,7 +515,7 @@ except Exception as e:
           '-o',
           outputPath,
           sourceUrl
-        ];
+        );
 
         execFile('python', ytdlpArgs, { timeout: 45000 }, (ytdlpErr) => {
           if (!ytdlpErr && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
@@ -522,7 +567,7 @@ except Exception as e:
             url: urlMeta.cleanUrl,
             title: defaultTitle,
             thumbnail: item.thumbnail || null,
-            videoUrl: finalType !== 'post' ? (item.url || null) : null,
+            videoUrl: finalType !== 'post' ? (this.unwrapRealCdnUrl(item.url) || null) : null,
             available: true
           };
         }
@@ -568,7 +613,7 @@ except Exception as e:
           url: urlMeta.cleanUrl,
           title: first.caption || rapidData.caption || defaultTitle,
           thumbnail: thumb,
-          videoUrl: isVideo ? videoUrl : null,
+          videoUrl: isVideo ? this.unwrapRealCdnUrl(videoUrl) : null,
           author,
           creator: author ? `@${author.replace(/^@/, '')}` : null,
           creatorName,
@@ -653,7 +698,7 @@ except Exception as e:
             const chosen = btchRes.result.find((i) => i && (i.url || i.video)) || btchRes.result[0];
             const candidate = chosen?.url || chosen?.video || chosen?.thumbnail;
             if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
-              directUrl = candidate;
+              directUrl = this.unwrapRealCdnUrl(candidate);
               logger.info('Extracted Instagram story stream via story extractor (<2s)', {
                 url: urlMeta.cleanUrl
               });
@@ -691,7 +736,7 @@ except Exception as e:
         if (jRes && (jRes.url || (Array.isArray(jRes) && jRes[0]?.url))) {
           const found = jRes.url || jRes[0]?.url;
           if (found && typeof found === 'string' && found.startsWith('http')) {
-            directUrl = found;
+            directUrl = this.unwrapRealCdnUrl(found);
             logger.info('Extracted media stream via @jerrycoder/instagram-api', { url: urlMeta.cleanUrl });
           }
         }
@@ -713,7 +758,7 @@ except Exception as e:
             const chosen = btchRes.result.find((i) => i && (i.url || i.video)) || btchRes.result[0];
             const candidate = chosen?.url || chosen?.video || chosen?.thumbnail;
             if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
-              directUrl = candidate;
+              directUrl = this.unwrapRealCdnUrl(candidate);
               logger.info('Extracted media stream via multi-format extractor fallback', {
                 url: urlMeta.cleanUrl,
                 type: urlMeta.type
@@ -751,7 +796,7 @@ except Exception as e:
               m.thumb;
 
             if (candidate && typeof candidate === 'string' && candidate.startsWith('http')) {
-              directUrl = candidate;
+              directUrl = this.unwrapRealCdnUrl(candidate);
               break;
             }
           }
@@ -764,7 +809,7 @@ except Exception as e:
             rapidData.video_url ||
             rapidData.display_url;
           if (topCandidate && typeof topCandidate === 'string' && topCandidate.startsWith('http')) {
-            directUrl = topCandidate;
+            directUrl = this.unwrapRealCdnUrl(topCandidate);
           }
         }
       }
