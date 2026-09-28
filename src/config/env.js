@@ -28,7 +28,7 @@ const config = {
   downloadRateLimit: parseInt(process.env.DOWNLOAD_RATE_LIMIT || '30', 10),
 
   // Timeout
-  requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '15000', 10),
+  requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '35000', 10),
 
   // Media Provider ("mock" or "external")
   mediaProvider: process.env.MEDIA_PROVIDER || 'mock',
